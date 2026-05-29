@@ -284,9 +284,12 @@ def handle_message_async(message_id: str, sender_name: str, chat_id: str, text: 
             resume = _sessions.get(chat_id, "")
         result = run_claude(text, sender_name, resume_session=resume)
         answer = result["text"]
-        if result.get("session_id"):
-            with _sessions_lock:
+        with _sessions_lock:
+            if result.get("session_id"):
                 _sessions[chat_id] = result["session_id"]
+            elif resume:
+                # 续会话失败/出错：清掉失效的 session_id，下一条从头开始，避免卡死循环
+                _sessions.pop(chat_id, None)
 
         # 飞书单条消息别太长，超过就分段
         MAX = 4000

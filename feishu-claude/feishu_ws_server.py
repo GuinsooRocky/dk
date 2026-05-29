@@ -75,9 +75,12 @@ def handle(message_id: str, sender: str, chat_id: str, text: str) -> None:
         with core._sessions_lock:
             resume = core._sessions.get(chat_id, "")
         result = core.run_claude(text, sender, resume_session=resume)
-        if result.get("session_id"):
-            with core._sessions_lock:
+        with core._sessions_lock:
+            if result.get("session_id"):
                 core._sessions[chat_id] = result["session_id"]
+            elif resume:
+                # 续会话失败/出错：清掉失效 session，下一条从头来，避免卡死循环
+                core._sessions.pop(chat_id, None)
 
         answer = result["text"]
         MAX = 4000

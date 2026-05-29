@@ -159,9 +159,12 @@ def chat():
         with _sessions_lock:
             resume = _sessions.get(user, "")
         result = run_claude(full_prompt, user_dir, resume_session=resume)
-        if result.get("session_id"):
-            with _sessions_lock:
+        with _sessions_lock:
+            if result.get("session_id"):
                 _sessions[user] = result["session_id"]
+            elif resume:
+                # 续会话失败/出错：清掉失效 session，下一条从头来，避免卡死循环
+                _sessions.pop(user, None)
 
         log.info("回复 to=%s len=%d", user, len(result["text"]))
         return jsonify(result)
