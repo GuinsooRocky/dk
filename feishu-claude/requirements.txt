@@ -1,2 +1,5 @@
+# webhook 版（feishu_app_server.py / feishu_send.py）需要：
 Flask==3.0.0
 pycryptodome==3.20.0
+# WS 长连接版（feishu_ws_server.py）需要：飞书官方 SDK
+lark-oapi==1.6.7

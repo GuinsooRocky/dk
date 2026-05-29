@@ -1,13 +1,19 @@
 # Feishu × Claude Code
 
-两种模式，按需选：
+三种模式，按需选：
 
 | 模式 | 用谁 | 适用场景 | 需要 ngrok？ |
 |------|------|----------|-------------|
 | **A. 单向**（终端 → 群） | `feishu_send.py` | 定时报告、CLI 推送 Claude 结果到群 | ❌ |
-| **B. 双向**（群 ↔ Claude） | `feishu_app_server.py` | 群里 @机器人 提问，Claude 回答 | ✅ |
+| **B. 双向 · webhook**（群 ↔ Claude） | `feishu_app_server.py` | 群里 @机器人 提问，Claude 回答 | ✅ |
+| **C. 双向 · WS 长连接** ⭐推荐 | `feishu_ws_server.py` | 同 B，但服务主动连飞书 | ❌ |
 
-下面**重点讲方案 B**，因为这才是你想要的"手机发消息 → 电脑跑 CC → 飞书回复"。
+> ⭐ **新装/想稳定就用方案 C**：飞书官方 `lark-oapi` 长连接，服务主动连飞书，**不用 ngrok**——
+> URL 不会漂移、不用回后台重填、不用 Flask dev server。业务逻辑（@严格比对 / 单飞 / 会话复用 /
+> 白名单）与 B 完全复用。配合 [`../daemon/`](../daemon) 的 launchd 守护即可开机自启、崩溃自愈、不用开终端。
+> 启动：`python feishu_ws_server.py`（前置：飞书后台事件订阅切到「使用长连接接收事件」）。
+
+下面**方案 B** 讲 webhook 的完整搭建（理解原理用）；生产建议直接上 C。
 
 ---
 

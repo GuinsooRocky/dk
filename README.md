@@ -27,7 +27,7 @@
 ## 改造路线
 
 - [x] **第一批 · 安全/正确性止血**：工具默认只读 / 白名单 fail-closed / 飞书 @机器人严格比对 open_id / event_id 去重 / 单飞限并发 + busy 提示 / 按会话复用 claude session（多轮记忆）/ token 缓存加锁 / 绑 127.0.0.1
-- [ ] **第二批 · 干掉痛点**：飞书改 [lark-oapi](https://github.com/larksuite/oapi-sdk-python) WebSocket 长连接（删 ngrok/Flask/手写 AES）；launchd 守护 + 开机自启
+- [x] **第二批 · 干掉痛点**（代码完成，待飞书后台切「长连接」+ 实跑验证）：飞书新增 `feishu_ws_server.py` 用 [lark-oapi](https://github.com/larksuite/oapi-sdk-python) WebSocket 长连接（无 ngrok，复用 B 全部逻辑，webhook 版保留作 fallback）；`daemon/` 下 launchd 守护 + 开机自启 + 崩溃自愈
 - [ ] **第三批 · 架构重构**：抽 `core/` + `ChannelAdapter`，三份 `run_claude` 收成一份；Claude 执行迁到 [Claude Agent SDK](https://github.com/anthropics/claude-agent-sdk-python) 进程内常驻；`settings.json` sandbox 真隔离
 
 ---
