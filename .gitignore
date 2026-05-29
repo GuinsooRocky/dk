@@ -24,5 +24,8 @@ node_modules/
 */.logs/
 *.log
 
+# ===== 用户自己的 sandbox 实配（机器相关路径；保留 .example）=====
+sandbox-settings.json
+
 # ===== macOS =====
 .DS_Store

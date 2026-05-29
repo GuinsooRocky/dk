@@ -1,0 +1,28 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "failIfUnavailable": true,
+    "autoAllowBashIfSandboxed": true,
+    "filesystem": {
+      "allowWrite": ["~/claude-feishu-workdir", "~/claude-wechat-workdir"],
+      "denyRead": [
+        "~/.ssh",
+        "~/.aws",
+        "~/.config/gh",
+        "~/.gnupg",
+        "~/.netrc",
+        "~/Library/Keychains",
+        "~/Desktop/my-code/chat-cc-bot/feishu-claude/.env",
+        "~/Desktop/my-code/chat-cc-bot/wechat-claude-bot/.env"
+      ]
+    },
+    "network": {
+      "allowedDomains": [
+        "api.anthropic.com",
+        "open.feishu.cn",
+        "*.feishu.cn"
+      ],
+      "allowManagedDomainsOnly": true
+    }
+  }
+}
