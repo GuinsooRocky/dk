@@ -27,5 +27,8 @@ node_modules/
 # ===== 用户自己的 sandbox 实配（机器相关路径；保留 .example）=====
 sandbox-settings.json
 
+# ===== 子 agent 评审草稿（非项目内容）=====
+.claude/agent-memory/
+
 # ===== macOS =====
 .DS_Store

@@ -78,8 +78,15 @@ bot.on('message', async msg => {
       if (GROUP_REQUIRE_MENTION) {
         const mentioned = await msg.mentionSelf();
         if (!mentioned) return;
-        // 去掉 @机器人 的部分
-        cleanText = text.replace(/@[^\s]+\s*/g, '').trim();
+        // 去掉 @机器人 的部分：优先用 wechaty mentionText() 精确剥离（含空格的中文昵称也对），
+        // 老版本无此方法则退回正则启发式
+        try {
+          cleanText = (typeof msg.mentionText === 'function')
+            ? (await msg.mentionText()).trim()
+            : text.replace(/@[^\s]+\s*/g, '').trim();
+        } catch {
+          cleanText = text.replace(/@[^\s]+\s*/g, '').trim();
+        }
         shouldReply = true;
       } else {
         shouldReply = true;

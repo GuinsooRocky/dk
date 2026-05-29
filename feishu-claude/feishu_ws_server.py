@@ -54,14 +54,8 @@ def reply(message_id: str, text: str) -> None:
 
 
 def handle(message_id: str, sender: str, chat_id: str, text: str) -> None:
-    """与 webhook 版同构：fail-closed 白名单 → 单飞 → 跑 claude(会话复用) → 分段回复"""
-    if not core.ALLOWED_USERS:
-        log.warning("白名单未配置，已拒绝 %s。把该 open_id 加入 .env 的 ALLOWED_USERS", sender)
-        reply(message_id, "本机器人尚未配置白名单（ALLOWED_USERS），出于安全已拒绝所有请求。")
-        return
-    if sender not in core.ALLOWED_USERS:
-        log.warning("拒绝 %s（不在白名单）", sender)
-        reply(message_id, f"抱歉 {sender}，你不在白名单里。")
+    """单飞 → 跑 claude(会话复用) → 分段回复。白名单已在 on_message 前置拦截，这里兜底防御"""
+    if not core.is_allowed(sender):
         return
 
     if not core._claude_slots.acquire(blocking=False):
@@ -78,8 +72,8 @@ def handle(message_id: str, sender: str, chat_id: str, text: str) -> None:
         with core._sessions_lock:
             if result.get("session_id"):
                 core._sessions[chat_id] = result["session_id"]
-            elif resume:
-                # 续会话失败/出错：清掉失效 session，下一条从头来，避免卡死循环
+            elif resume and not result.get("ok"):
+                # 仅真失败(超时/非0退出)且本轮续接时清 session；rc=0 解析失败保留会话
                 core._sessions.pop(chat_id, None)
 
         answer = result["text"]
@@ -105,15 +99,21 @@ def handle(message_id: str, sender: str, chat_id: str, text: str) -> None:
 def on_message(data) -> None:
     """lark.ws 收到 im.message.receive_v1 的回调（跑在 SDK 线程里）"""
     try:
-        # 幂等去重（长连接也可能瞬时重投）
+        # 先取并守卫可能为 None 的字段（畸形事件不应在 dedup 记账后被吞掉而无法重投）
+        ev = data.event
+        msg = ev.message if ev else None
+        sender = ev.sender if ev else None
+        if msg is None:
+            log.warning("WS 事件缺 message，忽略")
+            return
+        message_id = msg.message_id
+
+        # 幂等去重（放在能拿到 message 之后；长连接也可能瞬时重投）
         event_id = getattr(data.header, "event_id", "") if data.header else ""
         if core.already_handled(event_id):
             log.info("重复事件 event_id=%s，已忽略", event_id)
             return
 
-        msg = data.event.message
-        sender = data.event.sender
-        message_id = msg.message_id
         chat_id = msg.chat_id or ""
         sender_open_id = (
             sender.sender_id.open_id if sender and sender.sender_id else "anon"
@@ -128,6 +128,11 @@ def on_message(data) -> None:
                     return
             elif not mentions:
                 return
+
+        # fail-closed 白名单：在任何回复/处理之前（含非文本分支），未授权静默丢弃
+        if not core.is_allowed(sender_open_id):
+            log.warning("拒绝非白名单 from=%s", sender_open_id)
+            return
 
         if msg.message_type != "text":
             reply(message_id, "暂时只支持文本消息")

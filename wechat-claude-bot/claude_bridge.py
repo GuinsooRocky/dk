@@ -32,7 +32,8 @@ def load_env():
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            # 直接赋值（.env 权威）：避免 shell 已 export 同名变量时 .env 被静默忽略
+            os.environ[k.strip()] = v.strip()
 
 
 load_env()
@@ -51,6 +52,8 @@ ALLOWED_USERS = [u.strip() for u in os.getenv("ALLOWED_USERS", "").split(",") if
 CLAUDE_CMD = os.getenv("CLAUDE_CMD", "claude")
 # 同时最多跑几个 claude（默认 1=单飞，忙时回"稍等"），防止并发 fork 爆内存
 MAX_CONCURRENCY = int(os.getenv("CLAUDE_MAX_CONCURRENCY", "1"))
+# sandbox 设置文件（见 SANDBOX.md），配了就 --settings 传给 claude，隔离只作用于 bot 起的进程
+CLAUDE_SETTINGS = os.getenv("CLAUDE_SETTINGS", "").strip()
 
 # ============ 运行时状态 ============
 _claude_slots = threading.Semaphore(MAX_CONCURRENCY)
@@ -84,6 +87,8 @@ def run_claude(prompt: str, work_dir: Path, resume_session: str = "") -> dict:
         "--output-format", "json",
         "--permission-mode", "acceptEdits",  # 仅自动接受文件编辑；默认工具集已不含 Bash/Write/Edit
     ]
+    if CLAUDE_SETTINGS:
+        cmd += ["--settings", CLAUDE_SETTINGS]   # 套用 sandbox 隔离（见 SANDBOX.md）
     log.info("运行 Claude: %s resume=%s [+%s]", shlex.join(cmd[:3]), resume_session or "-", ALLOWED_TOOLS)
 
     try:
@@ -162,8 +167,8 @@ def chat():
         with _sessions_lock:
             if result.get("session_id"):
                 _sessions[user] = result["session_id"]
-            elif resume:
-                # 续会话失败/出错：清掉失效 session，下一条从头来，避免卡死循环
+            elif resume and not result.get("ok"):
+                # 仅在真失败(超时/非0退出)且本轮续接时清 session；rc=0 解析失败不算失败，保留会话
                 _sessions.pop(user, None)
 
         log.info("回复 to=%s len=%d", user, len(result["text"]))

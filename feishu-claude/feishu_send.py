@@ -39,7 +39,8 @@ def load_env():
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            # 直接赋值（.env 权威）：避免 shell 已 export 同名变量时 .env 被静默忽略
+            os.environ[k.strip()] = v.strip()
 
 load_env()
 

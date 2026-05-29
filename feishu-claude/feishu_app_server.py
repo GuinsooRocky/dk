@@ -45,7 +45,8 @@ def load_env():
             if not line or line.startswith("#") or "=" not in line:
                 continue
             k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+            # 直接赋值（.env 权威）：避免 shell 已 export 同名变量时 .env 被静默忽略
+            os.environ[k.strip()] = v.strip()
 
 load_env()
 
@@ -66,6 +67,8 @@ ALLOWED_USERS = [u.strip() for u in os.getenv("ALLOWED_USERS", "").split(",") if
 BOT_OPEN_ID = os.getenv("FEISHU_BOT_OPEN_ID", "").strip()
 # 同时最多跑几个 claude（默认 1=单飞，忙时回"稍等"）；个人自用 1 足够，防止并发 fork 爆内存
 MAX_CONCURRENCY = int(os.getenv("CLAUDE_MAX_CONCURRENCY", "1"))
+# sandbox 设置文件（见 SANDBOX.md）。配了就以 --settings 传给 claude，使隔离只作用于 bot 起的进程
+CLAUDE_SETTINGS = os.getenv("CLAUDE_SETTINGS", "").strip()
 
 WORK_DIR.mkdir(parents=True, exist_ok=True)
 LOG_DIR = WORK_DIR / ".logs"
@@ -128,7 +131,7 @@ def already_handled(event_id: str) -> bool:
     with _seen_lock:
         if event_id in _seen_events:
             return True
-        _seen_events[event_id] = time.time()
+        _seen_events[event_id] = True   # 只需键，FIFO 保留最近 _SEEN_MAX 个
         while len(_seen_events) > _SEEN_MAX:
             _seen_events.popitem(last=False)
         return False
@@ -168,24 +171,39 @@ def get_tenant_token() -> str:
         return _token_cache["value"]
 
 
+_bot_id_lock = threading.Lock()
+_bot_id_retry_at = 0.0   # 失败后的冷却截止时间，期间不再发慢请求（防每条群消息阻塞 ack）
+
+
 def get_bot_open_id() -> str:
-    """拿机器人自身 open_id（用于严格判断是否 @ 了本机器人）。env 优先，否则调 /bot/v3/info 并缓存"""
-    global BOT_OPEN_ID
+    """拿机器人自身 open_id（用于严格判断是否 @ 了本机器人）。env 优先，否则调 /bot/v3/info。
+    失败后进入 10 分钟冷却，期间直接返回空走宽松模式，避免每条群消息都同步阻塞撑爆飞书 3s ack。
+    """
+    global BOT_OPEN_ID, _bot_id_retry_at
     if BOT_OPEN_ID:
         return BOT_OPEN_ID
-    try:
-        token = get_tenant_token()
-        req = urlreq.Request(
-            "https://open.feishu.cn/open-apis/bot/v3/info",
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        with urlreq.urlopen(req, timeout=10) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        BOT_OPEN_ID = data.get("bot", {}).get("open_id", "")
+    with _bot_id_lock:
         if BOT_OPEN_ID:
-            log.info("自动获取机器人 open_id=%s", BOT_OPEN_ID)
-    except Exception:
-        log.exception("获取机器人 open_id 失败，@检测将退回宽松模式")
+            return BOT_OPEN_ID
+        if time.time() < _bot_id_retry_at:
+            return ""  # 冷却期内，不再发慢请求
+        try:
+            token = get_tenant_token()
+            req = urlreq.Request(
+                "https://open.feishu.cn/open-apis/bot/v3/info",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+            with urlreq.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            BOT_OPEN_ID = data.get("bot", {}).get("open_id", "")
+            if BOT_OPEN_ID:
+                log.info("自动获取机器人 open_id=%s", BOT_OPEN_ID)
+            else:
+                _bot_id_retry_at = time.time() + 600
+                log.warning("/bot/v3/info 未返回 open_id，10 分钟内不再重试，@检测暂走宽松模式")
+        except Exception:
+            _bot_id_retry_at = time.time() + 600
+            log.exception("获取机器人 open_id 失败，10 分钟内不再重试，@检测暂走宽松模式")
     return BOT_OPEN_ID
 
 
@@ -212,6 +230,12 @@ def reply_message(message_id: str, text: str) -> dict:
         return {"code": -1, "msg": f"HTTP {e.code}: {e.read().decode('utf-8')}"}
 
 
+# ============ 白名单（fail-closed）============
+def is_allowed(sender: str) -> bool:
+    """fail-closed：白名单为空 → 拒绝所有人；非空 → 只放行名单内"""
+    return bool(ALLOWED_USERS) and sender in ALLOWED_USERS
+
+
 # ============ Claude 调用 ============
 def run_claude(prompt: str, user: str, resume_session: str = "") -> dict:
     """子进程调 claude -p，返回 {text, session_id}。resume_session 非空则续上一轮会话"""
@@ -236,6 +260,8 @@ def run_claude(prompt: str, user: str, resume_session: str = "") -> dict:
         "--output-format", "json",
         "--permission-mode", "acceptEdits",
     ]
+    if CLAUDE_SETTINGS:
+        cmd += ["--settings", CLAUDE_SETTINGS]   # 套用 sandbox 隔离（见 SANDBOX.md）
     log.info("Claude 启动 user=%s resume=%s prompt=%r", user, resume_session or "-", prompt[:80])
 
     try:
@@ -244,31 +270,26 @@ def run_claude(prompt: str, user: str, resume_session: str = "") -> dict:
             capture_output=True, text=True, timeout=TIMEOUT,
         )
     except subprocess.TimeoutExpired:
-        return {"text": f"任务超过 {TIMEOUT} 秒，已中断。", "session_id": ""}
+        return {"ok": False, "text": f"任务超过 {TIMEOUT} 秒，已中断。", "session_id": ""}
     except FileNotFoundError:
-        return {"text": f"找不到 claude 命令（CLAUDE_CMD={CLAUDE_CMD}）", "session_id": ""}
+        return {"ok": False, "text": f"找不到 claude 命令（CLAUDE_CMD={CLAUDE_CMD}）", "session_id": ""}
 
     if proc.returncode != 0:
-        return {"text": f"Claude 出错：\n{proc.stderr[:1500]}", "session_id": ""}
+        return {"ok": False, "text": f"Claude 出错：\n{proc.stderr[:1500]}", "session_id": ""}
 
+    # rc==0 即视为成功；即便 stdout 偶发非 JSON（混入告警行等），也不当失败、不误删会话
     try:
         data = json.loads(proc.stdout)
         text = (data.get("result") or data.get("text") or proc.stdout).strip()
-        return {"text": text or "(Claude 没返回内容)", "session_id": data.get("session_id", "")}
+        return {"ok": True, "text": text or "(Claude 没返回内容)", "session_id": data.get("session_id", "")}
     except json.JSONDecodeError:
-        return {"text": proc.stdout.strip() or "(Claude 没返回内容)", "session_id": ""}
+        return {"ok": True, "text": proc.stdout.strip() or "(Claude 没返回内容)", "session_id": ""}
 
 
 # ============ 异步处理消息（不阻塞 webhook 响应）============
 def handle_message_async(message_id: str, sender_name: str, chat_id: str, text: str):
-    # fail-closed 白名单：未配置 ALLOWED_USERS 时拒绝所有人（绝不"空=放行所有人"）
-    if not ALLOWED_USERS:
-        log.warning("白名单未配置，已拒绝来自 %s 的消息。若这是你本人，把该 open_id 加入 .env 的 ALLOWED_USERS", sender_name)
-        reply_message(message_id, "本机器人尚未配置白名单（ALLOWED_USERS），出于安全已拒绝所有请求。")
-        return
-    if sender_name not in ALLOWED_USERS:
-        log.warning("拒绝来自 %s 的消息（不在白名单）", sender_name)
-        reply_message(message_id, f"抱歉 {sender_name}，你不在白名单里。")
+    # 防御性二次校验（主闸已在 event() 里前移，这里兜底，不再回复以免成为存活探针）
+    if not is_allowed(sender_name):
         return
 
     # 单飞：已有任务在跑就让用户稍后重发，避免并发 fork claude
@@ -287,8 +308,9 @@ def handle_message_async(message_id: str, sender_name: str, chat_id: str, text: 
         with _sessions_lock:
             if result.get("session_id"):
                 _sessions[chat_id] = result["session_id"]
-            elif resume:
-                # 续会话失败/出错：清掉失效的 session_id，下一条从头开始，避免卡死循环
+            elif resume and not result.get("ok"):
+                # 仅在"真失败"(超时/非0退出)且本轮在续接时，清掉失效 session，下条从头来；
+                # rc=0 但解析失败不算失败，保留会话避免误删多轮记忆
                 _sessions.pop(chat_id, None)
 
         # 飞书单条消息别太长，超过就分段
@@ -376,10 +398,18 @@ def event():
             # 严格比对：只有 @ 的 open_id == 机器人自己才算
             mentioned_self = any(m.get("id", {}).get("open_id") == bot_id for m in mentions)
         else:
-            # 拿不到机器人 open_id 时退回宽松模式（依赖飞书 group_at_msg 权限已预过滤）
+            # 拿不到机器人 open_id 时退回宽松模式（依赖飞书 group_at_msg 权限已预过滤；
+            # 即便误判，下面的白名单 fail-closed 仍会拦住非授权用户）
             mentioned_self = bool(mentions)
         if not mentioned_self:
             return jsonify({"code": 0})
+
+    # fail-closed 白名单：在任何回复/处理之前就拦（含非文本分支），未授权者静默丢弃，
+    # 不回任何内容——避免成为"机器人在不在线"的存活探针
+    if not is_allowed(sender_name):
+        log.warning("拒绝非白名单 from=%s（白名单%s）。如是你本人，把该 open_id 加入 .env",
+                    sender_name, "未配置" if not ALLOWED_USERS else "不含此人")
+        return jsonify({"code": 0})
 
     # 只处理文本
     if msg_type != "text":
