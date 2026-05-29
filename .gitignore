@@ -1,0 +1,28 @@
+# ===== secrets（绝不入库）=====
+.env
+*/.env
+!.env.example
+!*/.env.example
+
+# ===== Python =====
+.venv/
+*/.venv/
+__pycache__/
+*/__pycache__/
+*.pyc
+
+# ===== Node =====
+node_modules/
+*/node_modules/
+
+# ===== Wechaty 登录态（含会话凭证，泄露=被盗号）=====
+*.memory-card.json
+*.wechaty/
+
+# ===== 运行时产物 =====
+.logs/
+*/.logs/
+*.log
+
+# ===== macOS =====
+.DS_Store
