@@ -1,1 +1,3 @@
 Flask==3.0.0
+# 可选：仅当 CLAUDE_ENGINE=sdk（进程内引擎）时需要
+# claude-agent-sdk>=0.2

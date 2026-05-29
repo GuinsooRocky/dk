@@ -3,3 +3,5 @@ Flask==3.0.0
 pycryptodome==3.20.0
 # WS 长连接版（feishu_ws_server.py）需要：飞书官方 SDK
 lark-oapi==1.6.7
+# 可选：仅当 CLAUDE_ENGINE=sdk（进程内引擎）时需要
+# claude-agent-sdk>=0.2
