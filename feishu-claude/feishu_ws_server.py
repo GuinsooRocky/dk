@@ -6,35 +6,64 @@
 启动：python feishu_ws_server.py
 前置：飞书后台「事件订阅」订阅方式改为「使用长连接接收事件」。
 """
+import os
 import json
 import logging
 
 import lark_oapi as lark
 from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
-from lark_oapi.api.im.v1 import ReplyMessageRequest, ReplyMessageRequestBody
+from lark_oapi.api.im.v1 import (
+    CreateMessageRequest, CreateMessageRequestBody,
+    UpdateMessageRequest, UpdateMessageRequestBody,
+)
 
 import feishu_common as fc
 
 log = logging.getLogger("feishu")
 
+# 群聊是否要求 @ 机器人才回。个人私人群（就你+机器人）设 false → 发啥都回，不用 @。
+GROUP_REQUIRE_MENTION = os.getenv("GROUP_REQUIRE_MENTION", "false").strip().lower() in ("1", "true", "yes")
+
 _client = lark.Client.builder().app_id(fc.APP_ID).app_secret(fc.APP_SECRET).build()
 
 
-def _reply(message_id: str, text: str) -> None:
+def _send(chat_id: str, text: str) -> str:
+    """发消息到群（主聊天里显示，非线程回复），返回 message_id 供后续原地编辑。"""
     req = (
-        ReplyMessageRequest.builder()
-        .message_id(message_id)
+        CreateMessageRequest.builder()
+        .receive_id_type("chat_id")
         .request_body(
-            ReplyMessageRequestBody.builder()
+            CreateMessageRequestBody.builder()
+            .receive_id(chat_id)
             .msg_type("text")
             .content(json.dumps({"text": text}, ensure_ascii=False))
             .build()
         )
         .build()
     )
-    resp = _client.im.v1.message.reply(req)
+    resp = _client.im.v1.message.create(req)
     if not resp.success():
-        log.error("reply 失败 code=%s msg=%s", resp.code, resp.msg)
+        log.error("create 失败 code=%s msg=%s", resp.code, resp.msg)
+        return ""
+    return resp.data.message_id if resp.data else ""
+
+
+def _update(message_id: str, text: str) -> None:
+    """原地编辑机器人自己发的文本消息（"思考中"→答案，不留废消息）。"""
+    req = (
+        UpdateMessageRequest.builder()
+        .message_id(message_id)
+        .request_body(
+            UpdateMessageRequestBody.builder()
+            .msg_type("text")
+            .content(json.dumps({"text": text}, ensure_ascii=False))
+            .build()
+        )
+        .build()
+    )
+    resp = _client.im.v1.message.update(req)
+    if not resp.success():
+        log.error("update 失败 code=%s msg=%s", resp.code, resp.msg)
 
 
 def on_message(data) -> None:
@@ -57,8 +86,8 @@ def on_message(data) -> None:
         chat_id = msg.chat_id or ""
         sender_open_id = sender.sender_id.open_id if sender and sender.sender_id else "anon"
 
-        # 群里只在被 @ 本机器人 时响应（mentions 转成 dict 复用 feishu_common.mentioned_bot）
-        if msg.chat_type == "group":
+        # 群里默认不要求 @（GROUP_REQUIRE_MENTION=false）；要求时才校验是否 @ 了本机器人
+        if msg.chat_type == "group" and GROUP_REQUIRE_MENTION:
             mentions = [
                 {"id": {"open_id": (m.id.open_id if m.id else None)}, "key": m.key}
                 for m in (msg.mentions or [])
@@ -85,7 +114,20 @@ def on_message(data) -> None:
         if not text:
             return
 
-        fc.process(lambda t: _reply(message_id, t), sender_open_id, chat_id, text)
+        # 首条"思考中"占位 → 下一条原地编辑成答案（跟 Telegram 一致，不留废消息）
+        state = {"mid": None, "first": True}
+
+        def reply(t: str) -> None:
+            if state["first"]:
+                state["first"] = False
+                state["mid"] = _send(chat_id, t)
+            elif state["mid"]:
+                _update(state["mid"], t)
+                state["mid"] = None
+            else:
+                _send(chat_id, t)
+
+        fc.process(reply, sender_open_id, chat_id, text)
     except Exception:
         log.exception("WS 处理事件出错")
 

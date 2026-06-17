@@ -1,0 +1,46 @@
+# chat-cc-bot 统一配置（拷成 config.toml 填自己的）
+# 每个人用自己的 Claude（本机已登录的 claude CLI）+ 自己的 bot token。
+
+[claude]
+# 全局同时最多几个 claude（1=单飞，跨所有渠道，防爆内存）
+max_concurrency = 1
+# 允许的工具。默认只读；开 Bash/Write/Edit 见 SANDBOX.md
+tools = "Read,Glob,Grep,WebFetch"
+# 单次超时秒
+timeout = 300
+# 引擎 cli | sdk
+engine = "cli"
+# claude 命令路径（不在 PATH 时填绝对路径）
+# cmd = "/Users/你/.local/bin/claude"
+
+[hub]
+port = 8787
+
+# 中国大陆访问 Telegram/Anthropic 需代理；填了 supervisor 会注入给子进程
+# 海外留空。注意：本机服务(127.0.0.1)自动不走代理。
+[proxy]
+# url = "http://127.0.0.1:7897"
+
+# ---- 渠道：enabled=true 才会被 supervisor 起 ----
+
+[telegram]
+enabled = true
+token = ""                       # @BotFather 拿
+allowed_users = ""               # 你的数字 user id，逗号分隔；留空=拒绝所有
+trigger_prefix = "/c "           # 群里触发前缀
+
+[feishu]
+enabled = false
+app_id = ""
+app_secret = ""
+allowed_users = ""               # open_id，逗号分隔
+
+[wecom]
+enabled = false
+bot_id = ""
+bot_secret = ""
+allowed_users = ""               # userid，逗号分隔
+
+[voice]
+# 本地 SenseVoice 模型目录（缺省指 MK 的；没有就填自己的）
+# sensevoice_dir = "/Users/你/.mk/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"

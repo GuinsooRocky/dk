@@ -1,8 +1,32 @@
 # chat-cc-bot
 
-把**飞书 / 微信**的消息桥接到本机 Claude Code（`claude -p`），在你自己的 Mac 上跑任务并把结果回到对话里。
+把**飞书 / Telegram / 企业微信**的消息（含**语音**）桥接到本机 Claude Code，在你自己的 Mac 上跑任务并把结果回到对话里。**可自托管**：拿走填自己的 Claude + 自己的 bot token，跑自己的实例。
 
-> 🚀 **从这里开始：[使用说明.md](./使用说明.md)** —— 从零到跑通 + 日常操作 + 配置速查 + 排错。
+## 架构（hub 中枢）
+
+```
+   菜单栏App(rumps) ──┐ 轮询 /status /stats
+                     ▼
+  Hub (FastAPI, 127.0.0.1, 唯一大脑) ── /chat 跑claude · 全局单飞 · 会话
+     ▲        ▲         ▲          ▲ 你也能 curl
+  Telegram  飞书      企微      （各薄壳：收消息+语音转写 → POST /chat）
+   壳       壳        壳
+        supervisor.py 一条命令起全部 + 崩溃自愈
+```
+
+- **Hub** = 唯一跑 claude 的地方（全局单飞，内存可控）；渠道是**薄转发壳**；加渠道≈复制一个壳。
+- **语音**：壳下载语音 → 本地 SenseVoice 转写（复用 MK 模型，离线免费）→ 走 /chat。
+
+## 🚀 一键启动
+
+```bash
+cp config.example.toml config.toml     # 填：至少一个渠道 enabled + token + allowed_users
+./run.sh                               # = python3 supervisor.py，起 hub + enabled 渠道，崩溃自愈
+```
+
+**菜单栏仪表盘**（macOS，显示存活/用量）：`menubar/.venv/bin/python menubar/app.py &`
+
+> 各渠道首次需建自己的 venv + 装依赖（见各子目录 README）。详细从零上手：[使用说明.md](./使用说明.md)。
 
 ## 结构
 
@@ -13,9 +37,10 @@ feishu-claude/
   feishu_ws_server.py      ⭐WS 长连接入口（无 ngrok）
   feishu_app_server.py     webhook 入口（需 ngrok，fallback）
   feishu_send.py           单向：终端 → 群
-wechat-claude-bot/
-  claude_bridge.py         微信桥（Flask，调 core）
-  wechat_bot.js            Wechaty 网关（Node）
+telegram/
+  telegram_bot.py          Telegram 官方 Bot API 长轮询入口（无 ngrok，调 core）
+wecom/
+  wecom_ws_server.py       企业微信智能机器人长连接入口（无 ngrok，调 core）
 daemon/                    launchd 守护（开机自启 + 崩溃自愈）
 sandbox-settings.example.json + SANDBOX.md   真隔离模板
 ```
@@ -23,7 +48,8 @@ sandbox-settings.example.json + SANDBOX.md   真隔离模板
 | 渠道 | 入站方式 | 触发 |
 |------|----------|------|
 | 飞书/Lark | WS 长连接（推荐，无 ngrok）/ webhook | 群里 @机器人 |
-| 微信 | Wechaty（不需 ngrok） | 私聊 `/c ` 前缀 / 群 @机器人 |
+| Telegram | 官方 Bot API 长轮询（无 ngrok，零封号） | 私聊直接发 / 群 `/c ` 前缀 / @机器人 |
+| 企业微信 | 智能机器人长连接（无 ngrok） | 群里 @机器人 |
 
 各子目录 `README.md` 有详细搭建步骤。加新渠道只需写一个调 `core` 的薄入口。
 

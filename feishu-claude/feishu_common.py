@@ -15,7 +15,7 @@ from urllib import request as urlreq
 
 # ---- 引入跨渠道 core（core/ 在仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, runner, security, dedup, chunking  # noqa: E402
+from core import config, security, dedup, chunking, hub_client  # noqa: E402
 
 # ---- 加载 .env + 配置 ----
 config.load_env(Path(__file__).parent / ".env")
@@ -44,9 +44,7 @@ if not APP_ID or not APP_SECRET:
     log.error("缺少 FEISHU_APP_ID 或 FEISHU_APP_SECRET，请检查 .env")
     sys.exit(1)
 
-# ---- 跨渠道共享的运行时状态（单飞 / 会话 / 去重）----
-SLOTS = runner.Slots(CFG.max_concurrency)
-SESSIONS = runner.Sessions()
+# ---- 渠道侧只留去重（单飞/会话已上移到 Hub）----
 DEDUP = dedup.Dedup()
 
 
@@ -125,33 +123,25 @@ def is_allowed(sender: str) -> bool:
 
 
 def process(reply, sender: str, chat_id: str, text: str) -> None:
-    """编排：单飞 → 思考中 → 跑 claude(会话复用) → 分段回复。reply 是 1 参回调(text)->None。
-    白名单已由入口前置拦截，这里兜底防御。webhook/WS 共用这一份。"""
+    """薄壳编排：白名单 → 思考中 → 转发给 Hub → 分段回复。reply 是 1 参回调(text)->None。
+    不自己跑 claude（做菜在 Hub）；单飞/会话也在 Hub。webhook/WS 共用这一份。"""
     if not is_allowed(sender):
         return
-    if not SLOTS.acquire():
-        reply("⏳ 正在处理上一条，等它完成再发我哦。")
-        return
+    log.info("转发 from=%s chat=%s text=%r", sender, chat_id, text[:80])
+    reply("思考中...")
     try:
-        log.info("处理 from=%s chat=%s text=%r", sender, chat_id, text[:80])
-        reply("思考中...")
-        work_dir = CFG.work_dir / runner.safe_user(sender)
-        work_dir.mkdir(exist_ok=True)
-        resume = SESSIONS.get(chat_id)
-        prompt = config.build_prompt("飞书群", sender, work_dir, text)
-        result = runner.run_claude(CFG, prompt, work_dir, resume_session=resume)
-        SESSIONS.update(chat_id, result, was_resume=bool(resume))
-        chunks = chunking.split_chunks(result["text"], MAX_FEISHU_MSG)
-        for i, c in enumerate(chunks, 1):
-            reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
-            if len(chunks) > 1:
-                time.sleep(0.5)
-        log.info("回复完成 from=%s len=%d", sender, len(result["text"]))
+        resp = hub_client.ask_hub_sync("feishu", chat_id, sender, text)
     except Exception as e:
-        log.exception("处理消息出错")
+        log.exception("调 Hub 失败")
         try:
-            reply(f"出错了：{e}")
+            reply(f"后端(Hub)没连上：{e}")
         except Exception:
             pass
-    finally:
-        SLOTS.release()
+        return
+    answer = resp.get("text") or "(空)"
+    chunks = chunking.split_chunks(answer, MAX_FEISHU_MSG)
+    for i, c in enumerate(chunks, 1):
+        reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
+        if len(chunks) > 1:
+            time.sleep(0.5)
+    log.info("回复完成 from=%s len=%d", sender, len(answer))
