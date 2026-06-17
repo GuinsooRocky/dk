@@ -12,6 +12,7 @@ import time
 import asyncio
 import logging
 import threading
+from collections import deque
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -46,6 +47,10 @@ SESSIONS = runner.Sessions()
 _STARTED_AT = time.time()
 _stats_lock = threading.Lock()
 _STATS = {"total": 0, "ok": 0, "busy": 0, "err": 0, "by_user": {}, "last_at": 0.0, "last_text": ""}
+
+# 最近被白名单拒掉的发送者（实时抓 ID 用）：渠道拒绝时上报，app 显示"想加入的人"
+_pending_lock = threading.Lock()
+_PENDING = deque(maxlen=20)
 
 
 def _bump(field: str, user_key: str = "") -> None:
@@ -123,7 +128,119 @@ async def status():
         "engine": CFG.engine,
         "tools": CFG.allowed_tools,
         "max_concurrency": CFG.max_concurrency,
+        "proxy": _current_proxy(),
     }
+
+
+class ChannelToggle(BaseModel):
+    name: str          # telegram / feishu / wecom
+    enabled: bool
+
+
+@app.post("/config/channel")
+async def config_channel(body: ChannelToggle):
+    """开/关一个渠道：改 config.toml 的 enabled + 请求 supervisor 热重载（起/停该渠道）。"""
+    if body.name not in ("telegram", "feishu", "wecom"):
+        return {"ok": False, "reason": f"未知渠道 {body.name}"}
+    cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
+    ok = config.set_channel_enabled(cfg_path, body.name, body.enabled)
+    if ok:
+        config.request_reload()   # supervisor 下个 tick 会起/停对应进程
+    return {"ok": ok}
+
+
+class ProxyConfig(BaseModel):
+    enabled: bool
+    port: int = 7897
+
+
+def _current_proxy() -> str:
+    try:
+        import tomllib
+        with open(Path(__file__).resolve().parent.parent / "config.toml", "rb") as f:
+            return (tomllib.load(f).get("proxy", {}).get("url") or "").strip()
+    except Exception:
+        return ""
+
+
+@app.post("/config/proxy")
+async def config_proxy(body: ProxyConfig):
+    """设代理：勾选+端口 → 写 config.toml [proxy].url；否则清空走直连。改完整体重启（代理影响 hub 跑 claude）。"""
+    cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
+    url = f"http://127.0.0.1:{body.port}" if (body.enabled and body.port) else ""
+    ok = config.set_proxy_url(cfg_path, url)
+    if ok:
+        config.request_reload_all()
+    return {"ok": ok, "url": url}
+
+
+class PendingReport(BaseModel):
+    channel: str
+    user: str
+
+
+@app.post("/pending")
+async def pending_report(body: PendingReport):
+    """渠道把被拒的发送者上报这里（实时抓 ID）。按 (channel,user) 去重、置顶。"""
+    with _pending_lock:
+        items = [x for x in _PENDING if not (x["channel"] == body.channel and x["user"] == body.user)]
+        _PENDING.clear()
+        _PENDING.extend(items)
+        _PENDING.append({"channel": body.channel, "user": body.user, "at": time.time()})
+    return {"ok": True}
+
+
+class AllowEdit(BaseModel):
+    channel: str
+    id: str
+    action: str   # add | remove
+
+
+@app.get("/allowlist")
+async def allowlist():
+    """各渠道当前白名单 + 最近想加入(被拒)的人。"""
+    chans = {c: config.read_allowlist(c) for c in ("telegram", "feishu", "wecom")}
+    with _pending_lock:
+        pend = list(_PENDING)
+    pend = [p for p in pend if p["user"] not in chans.get(p["channel"], [])]  # 已加入的不再显示
+    return {"channels": chans, "pending": pend}
+
+
+@app.post("/allowlist")
+async def allowlist_edit(body: AllowEdit):
+    """加/移除某渠道白名单里的一个 ID，改 .env 后只重启该渠道（重读 .env 生效）。"""
+    if body.channel not in ("telegram", "feishu", "wecom"):
+        return {"ok": False, "reason": f"未知渠道 {body.channel}"}
+    ids = config.read_allowlist(body.channel)
+    if body.action == "add":
+        if body.id and body.id not in ids:
+            ids.append(body.id)
+    elif body.action == "remove":
+        ids = [x for x in ids if x != body.id]
+    else:
+        return {"ok": False, "reason": "action 只能 add/remove"}
+    ok = config.write_allowlist(body.channel, ids)
+    if ok:
+        config.request_restart_channel(body.channel)
+        with _pending_lock:   # 加进来的从"想加入"里清掉
+            items = [x for x in _PENDING if not (x["channel"] == body.channel and x["user"] == body.id)]
+            _PENDING.clear()
+            _PENDING.extend(items)
+    return {"ok": ok, "ids": ids}
+
+
+class ToolsConfig(BaseModel):
+    tools: str   # 逗号分隔，如 "Read,Glob,Grep,WebFetch"
+
+
+@app.post("/config/tools")
+async def config_tools(body: ToolsConfig):
+    """改允许的工具：写 config.toml [claude].tools，整体重启（hub 跑 claude 时读它）。"""
+    cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
+    ok = config.set_claude_tools(cfg_path, body.tools)
+    if ok:
+        config.request_reload_all()
+    return {"ok": ok, "tools": body.tools}
 
 
 @app.get("/supervisor")

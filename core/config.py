@@ -1,5 +1,6 @@
 """配置加载与 prompt 构造（跨渠道共享）。"""
 import os
+import re
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -37,6 +38,162 @@ def runtime_dir() -> Path:
 def supervisor_status_path() -> Path:
     """supervisor 写、hub /supervisor 读的渠道状态文件。"""
     return runtime_dir() / "supervisor.json"
+
+
+def reload_request_path() -> Path:
+    """hub 改了 config.toml 后 touch 它，supervisor 每个 tick 看到就热重载渠道。"""
+    return runtime_dir() / "reload"
+
+
+def request_reload() -> None:
+    reload_request_path().write_text("1")
+
+
+def reload_all_request_path() -> Path:
+    """整体重启标记（改代理等影响 hub 环境的配置时用——渠道增删用 reload 就够）。"""
+    return runtime_dir() / "reload_all"
+
+
+def request_reload_all() -> None:
+    reload_all_request_path().write_text("1")
+
+
+def restart_channel_request_path() -> Path:
+    """单渠道重启标记（白名单改了只重启那个渠道，它启动时重读 .env 生效）。"""
+    return runtime_dir() / "restart_channel"
+
+
+def request_restart_channel(name: str) -> None:
+    restart_channel_request_path().write_text(name)
+
+
+# 渠道 → .env 路径（白名单真实存放处）
+_CHANNEL_ENV = {
+    "telegram": "telegram/.env",
+    "feishu": "feishu-claude/.env",
+    "wecom": "wecom/.env",
+}
+
+
+def channel_env_path(channel: str) -> Path:
+    root = Path(__file__).resolve().parent.parent
+    return root / _CHANNEL_ENV.get(channel, f"{channel}/.env")
+
+
+def read_env_value(env_path, key: str) -> str:
+    try:
+        for line in Path(env_path).read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            if k.strip() == key:
+                return v.strip()
+    except Exception:
+        pass
+    return ""
+
+
+def read_allowlist(channel: str) -> list:
+    val = read_env_value(channel_env_path(channel), "ALLOWED_USERS")
+    return [x.strip() for x in val.split(",") if x.strip()]
+
+
+def write_allowlist(channel: str, ids) -> bool:
+    """把渠道 .env 的 ALLOWED_USERS 写成给定列表（去重保序），保留其余行。"""
+    p = channel_env_path(channel)
+    if not p.exists():
+        return False
+    seen, uniq = set(), []
+    for x in ids:
+        x = x.strip()
+        if x and x not in seen:
+            seen.add(x); uniq.append(x)
+    joined = ",".join(uniq)
+    lines, out, done = p.read_text().splitlines(), [], False
+    for line in lines:
+        if not done and line.lstrip("#").strip().startswith("ALLOWED_USERS="):
+            out.append(f"ALLOWED_USERS={joined}"); done = True
+            continue
+        out.append(line)
+    if not done:
+        out.append(f"ALLOWED_USERS={joined}")
+    p.write_text("\n".join(out) + "\n")
+    return True
+
+
+def set_claude_tools(config_path, tools: str) -> bool:
+    """写 config.toml [claude].tools（允许的工具，逗号分隔）。保留排版。"""
+    p = Path(config_path)
+    if not p.exists():
+        return False
+    lines, out, in_claude, done = p.read_text().splitlines(), [], False, False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            if in_claude and not done:
+                out.append(f'tools = "{tools}"'); done = True
+            in_claude = (s == "[claude]")
+            out.append(line)
+            continue
+        if in_claude and not done and s.lstrip("#").strip().startswith("tools"):
+            out.append(f'tools = "{tools}"'); done = True
+            continue
+        out.append(line)
+    if in_claude and not done:
+        out.append(f'tools = "{tools}"')
+    p.write_text("\n".join(out) + "\n")
+    return True
+
+
+def set_proxy_url(config_path, url: str) -> bool:
+    """把 config.toml [proxy] 段的 url 设成给定值；url 为空则注释掉（走直连）。保留排版。"""
+    p = Path(config_path)
+    if not p.exists():
+        return False
+    lines = p.read_text().splitlines()
+    out, in_proxy, done = [], False, False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            if in_proxy and not done:                       # 离开 [proxy] 仍没写 → 补一行
+                out.append(f'url = "{url}"' if url else '# url = ""')
+                done = True
+            in_proxy = (s == "[proxy]")
+            out.append(line)
+            continue
+        if in_proxy and not done and s.lstrip("#").strip().startswith("url"):
+            out.append(f'url = "{url}"' if url else '# url = ""')
+            done = True
+            continue
+        out.append(line)
+    if in_proxy and not done:                               # [proxy] 是最后一段
+        out.append(f'url = "{url}"' if url else '# url = ""')
+    p.write_text("\n".join(out) + "\n")
+    return True
+
+
+def set_channel_enabled(config_path, name: str, enabled: bool) -> bool:
+    """把 config.toml 里 [name] 段的 enabled 翻成 true/false（保留注释与排版）。
+
+    成功返回 True；找不到该段或段内没有 enabled 行返回 False。
+    """
+    p = Path(config_path)
+    if not p.exists():
+        return False
+    lines = p.read_text().splitlines()
+    in_section = False
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if s.startswith("["):
+            in_section = (s == f"[{name}]")
+            continue
+        if in_section and s.startswith("enabled"):
+            # 只换布尔 token，注释/空格原样保留
+            lines[i] = re.sub(r"\b(true|false)\b", "true" if enabled else "false", line, count=1)
+            p.write_text("\n".join(lines) + "\n")
+            return True
+    return False
 
 
 @dataclass(frozen=True)

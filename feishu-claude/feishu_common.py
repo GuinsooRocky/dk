@@ -126,6 +126,7 @@ def process(reply, sender: str, chat_id: str, text: str) -> None:
     """薄壳编排：白名单 → 思考中 → 转发给 Hub → 分段回复。reply 是 1 参回调(text)->None。
     不自己跑 claude（做菜在 Hub）；单飞/会话也在 Hub。webhook/WS 共用这一份。"""
     if not is_allowed(sender):
+        hub_client.report_pending("feishu", sender)   # 实时抓 ID：上报让 app 显示"想加入"
         return
     log.info("转发 from=%s chat=%s text=%r", sender, chat_id, text[:80])
     reply("思考中...")

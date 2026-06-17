@@ -100,11 +100,32 @@ def check_hub_endpoints():
     return (not missing), ("endpoint 齐" if not missing else f"缺 {missing}")
 
 
+def check_swift_build():
+    """不变量 5:macapp 原生 app 必须 swift build 过(app 侧 back-pressure)。
+
+    macapp/ 不存在 → 跳过(后端单跑也算绿);swift 没装 → 跳过并提示。
+    """
+    import shutil
+    import subprocess
+    pkg = ROOT / "macapp" / "Package.swift"
+    if not pkg.exists():
+        return True, "无 macapp,跳过"
+    if not shutil.which("swift"):
+        return True, "swift 未装,跳过(装了才验 app)"
+    r = subprocess.run(["swift", "build"], cwd=ROOT / "macapp",
+                       capture_output=True, text=True)
+    if r.returncode == 0:
+        return True, "swift build 过"
+    tail = (r.stderr or r.stdout).strip().splitlines()[-3:]
+    return False, "swift build 失败: " + " | ".join(tail)
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
     ("lazy-voice  语音可选", check_lazy_transcribe),
     ("hub-api     承重 endpoint", check_hub_endpoints),
+    ("swift-app   macapp 编译", check_swift_build),
 ]
 
 

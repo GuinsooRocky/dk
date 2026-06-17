@@ -28,6 +28,9 @@ from core import config as core_config  # noqa: E402
 
 CONFIG = ROOT / "config.toml"
 STATUS_PATH = core_config.supervisor_status_path()
+RELOAD_PATH = core_config.reload_request_path()
+RELOAD_ALL_PATH = core_config.reload_all_request_path()
+RESTART_CHANNEL_PATH = core_config.restart_channel_request_path()
 
 
 def load_cfg() -> dict:
@@ -55,24 +58,48 @@ def _find_certifi(venv_pythons) -> str:
     return ""
 
 
+def _env_value(env_path: Path, key: str) -> str:
+    """读渠道 .env 里某 key 的值（不存在/空返回 ""）。仅判断凭证齐不齐，不外泄值。"""
+    try:
+        for line in env_path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, v = line.split("=", 1)
+            if k.strip() == key:
+                return v.strip()
+    except Exception:
+        pass
+    return ""
+
+
 def channel_meta(cfg: dict) -> list:
     """所有已知渠道（含未启用）的元信息，用于状态展示：是否启用 + 凭证是否齐。
 
+    凭证可放 config.toml 或渠道 .env（很多人只放 .env），两处任一有值即算齐。
     凭证不齐（缺 token/secret，或白名单为空=没人能用）→ 状态 needs_setup。
     """
-    def filled(*vals):
-        return all((v or "").strip() for v in vals)
+    def has(cfg_val, env_path, env_key):
+        return bool((cfg_val or "").strip()) or bool(_env_value(env_path, env_key))
 
     tg = cfg.get("telegram", {})
     fs = cfg.get("feishu", {})
     wc = cfg.get("wecom", {})
+    tg_env = ROOT / "telegram" / ".env"
+    fs_env = ROOT / "feishu-claude" / ".env"
+    wc_env = ROOT / "wecom" / ".env"
     return [
         {"name": "telegram", "enabled": bool(tg.get("enabled")),
-         "creds_ok": filled(tg.get("token")) and filled(tg.get("allowed_users"))},
+         "creds_ok": has(tg.get("token"), tg_env, "TELEGRAM_BOT_TOKEN")
+                     and has(tg.get("allowed_users"), tg_env, "ALLOWED_USERS")},
         {"name": "feishu", "enabled": bool(fs.get("enabled")),
-         "creds_ok": filled(fs.get("app_id"), fs.get("app_secret")) and filled(fs.get("allowed_users"))},
+         "creds_ok": has(fs.get("app_id"), fs_env, "FEISHU_APP_ID")
+                     and has(fs.get("app_secret"), fs_env, "FEISHU_APP_SECRET")
+                     and has(fs.get("allowed_users"), fs_env, "ALLOWED_USERS")},
         {"name": "wecom", "enabled": bool(wc.get("enabled")),
-         "creds_ok": filled(wc.get("bot_id"), wc.get("bot_secret")) and filled(wc.get("allowed_users"))},
+         "creds_ok": has(wc.get("bot_id"), wc_env, "WECOM_BOT_ID")
+                     and has(wc.get("bot_secret"), wc_env, "WECOM_BOT_SECRET")
+                     and has(wc.get("allowed_users"), wc_env, "ALLOWED_USERS")},
     ]
 
 
@@ -120,7 +147,8 @@ def build_components(cfg: dict) -> list:
                 "TELEGRAM_BOT_TOKEN": tg.get("token", ""),
                 "ALLOWED_USERS": tg.get("allowed_users", ""),
                 "TRIGGER_PREFIX": tg.get("trigger_prefix", "/c "),
-                "HUB_URL": hub_url, **proxy_env, **voice_env,
+                # 代理只给 hub（跑 claude）用；Telegram 走直连（Clash 7897 到不了 Telegram）
+                "HUB_URL": hub_url, **voice_env,
             },
         })
 
@@ -144,7 +172,7 @@ def build_components(cfg: dict) -> list:
             "cwd": str(ROOT),
             "env": {
                 "WECOM_BOT_ID": wc.get("bot_id", ""), "WECOM_BOT_SECRET": wc.get("bot_secret", ""),
-                "ALLOWED_USERS": wc.get("allowed_users", ""), "HUB_URL": hub_url, **proxy_env, **voice_env,
+                "ALLOWED_USERS": wc.get("allowed_users", ""), "HUB_URL": hub_url, **voice_env,
             },
         })
     return comps
@@ -228,8 +256,11 @@ def main() -> None:
         base["CHATCC_SUPERVISED"] = "1"  # 渠道读 .env 时只补缺，不覆盖这里注入的 config.toml 值
         if certifi_path:
             base["SSL_CERT_FILE"] = certifi_path
+        # 只注入 config.toml 里有值的项：空字符串别注入，否则会盖住渠道 .env 里的真实凭证
+        # （凭证可在 .env，config.toml 仅 enabled=true 留空时，让 .env 补上）。
+        inject = {k: v for k, v in c["env"].items() if v != ""}
         p = subprocess.Popen(
-            c["cmd"], cwd=c["cwd"], env={**base, **c["env"]},
+            c["cmd"], cwd=c["cwd"], env={**base, **inject},
             stderr=subprocess.PIPE, text=True, bufsize=1,
         )
         st["stderr_tail"].clear()
@@ -265,6 +296,73 @@ def main() -> None:
 
     while True:
         time.sleep(2)
+        # 整体重启：改了影响 hub 环境的配置（如代理）→ 全停全起
+        if RELOAD_ALL_PATH.exists():
+            try:
+                RELOAD_ALL_PATH.unlink()
+            except Exception:
+                pass
+            print("[supervisor] 整体重启（配置变更，如代理）…")
+            cfg = load_cfg()
+            metas = channel_meta(cfg)
+            for st in state.values():
+                try:
+                    st["p"].terminate()
+                except Exception:
+                    pass
+            time.sleep(1.5)  # 等端口/连接释放
+            comps = build_components(cfg)
+            state = {c["name"]: {"c": c, "p": None, "backoff": 1, "last_rc": None,
+                                 "restarts": 0, "last_error": None, "stderr_tail": deque(maxlen=12)}
+                     for c in comps}
+            for st in state.values():
+                st["p"] = start(st["c"], st)
+            write_status(state, metas)
+            continue
+        # 单渠道重启：白名单改了 → 只重启那个渠道（它启动时重读 .env，新白名单生效）
+        if RESTART_CHANNEL_PATH.exists():
+            try:
+                name = RESTART_CHANNEL_PATH.read_text().strip()
+                RESTART_CHANNEL_PATH.unlink()
+            except Exception:
+                name = ""
+            if name in state and name != "hub":
+                print(f"[supervisor] 重启渠道 {name}（白名单变更）")
+                try:
+                    state[name]["p"].terminate()
+                except Exception:
+                    pass
+                time.sleep(0.5)
+                state[name]["backoff"] = 1
+                state[name]["last_error"] = None
+                state[name]["p"] = start(state[name]["c"], state[name])
+                write_status(state, metas)
+            continue
+        # 热重载：hub 改了 config.toml 会 touch reload 标记 → 起新启用 / 停新禁用的渠道（hub 不动）
+        if RELOAD_PATH.exists():
+            try:
+                RELOAD_PATH.unlink()
+            except Exception:
+                pass
+            cfg = load_cfg()
+            metas = channel_meta(cfg)
+            new_comps = {c["name"]: c for c in build_components(cfg)}
+            for name in list(state):
+                if name not in new_comps:   # 被禁用（hub 永远在 new_comps 里）
+                    print(f"[supervisor] 渠道 {name} 被禁用，停掉")
+                    try:
+                        state[name]["p"].terminate()
+                    except Exception:
+                        pass
+                    del state[name]
+            for name, c in new_comps.items():
+                if name not in state:       # 被启用
+                    print(f"[supervisor] 渠道 {name} 被启用，起")
+                    st = {"c": c, "p": None, "backoff": 1, "last_rc": None,
+                          "restarts": 0, "last_error": None, "stderr_tail": deque(maxlen=12)}
+                    st["p"] = start(c, st)
+                    state[name] = st
+            write_status(state, metas)
         for name, st in state.items():
             if st["p"].poll() is not None:
                 rc = st["p"].returncode

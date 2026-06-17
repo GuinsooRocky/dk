@@ -114,6 +114,7 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         text = _strip_trigger(update, msg.text or "")
         if not security.is_allowed(sender, ALLOWED):
             log.warning("拒绝非白名单 from=%s", sender)
+            hub_client.report_pending("telegram", sender)   # 实时抓 ID：上报让 app 显示"想加入"
             return
         if not text:
             return

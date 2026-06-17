@@ -32,5 +32,10 @@ sandbox-settings.json
 # ===== 子 agent 评审草稿（非项目内容）=====
 .claude/agent-memory/
 
+# ===== Swift / macapp 构建产物 =====
+.build/
+*/.build/
+macapp/dist/
+
 # ===== macOS =====
 .DS_Store

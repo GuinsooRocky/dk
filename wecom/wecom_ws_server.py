@@ -134,6 +134,7 @@ async def _make_handler(client):
             # fail-closed 白名单：未授权静默丢弃（_process 内也兜底防御）
             if not security.is_allowed(info["sender"], CFG.allowed_users):
                 log.warning("拒绝非白名单 from=%s", info["sender"])
+                hub_client.report_pending("wecom", info["sender"])   # 实时抓 ID
                 return
             if not info["text"]:
                 return

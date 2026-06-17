@@ -18,6 +18,7 @@ wecom-aibot-sdk-python       # 企业微信：智能机器人长连接
 httpx                        # hub_client → POST /chat
 certifi                      # 本机系统 CA 坏，统一证书包
 websockets                   # 渠道 WS
+python-socks                 # 跑 Clash 等 socks 系统代理时，wecom 的 websockets 需要它
 
 # ── 飞书 webhook 版（待退役，仅 feishu_app_server.py / feishu_send.py 需要）──
 # Flask==3.0.0
