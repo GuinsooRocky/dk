@@ -2,14 +2,19 @@
 
 读 config.toml → 起 hub + 所有 enabled 渠道（各用自己的 venv）→ 崩溃指数退避自愈。
 配置注入走子进程环境变量（子进程代码零改，继续 os.getenv）。Ctrl+C 全部停。
+同时把每个渠道的实时状态（在线/没配/崩溃/退避/最近错误）写到 supervisor.json，
+供 Hub 的 /supervisor 暴露给菜单栏/App —— 让"开没开、谁能用、有没有坏"一眼可见。
 
 跑：python3 supervisor.py
 """
 import os
 import sys
 import time
+import json
 import signal
+import threading
 import subprocess
+from collections import deque
 from pathlib import Path
 
 try:
@@ -18,7 +23,11 @@ except ModuleNotFoundError:
     print("需要 Python 3.11+（tomllib）"); sys.exit(1)
 
 ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
+from core import config as core_config  # noqa: E402
+
 CONFIG = ROOT / "config.toml"
+STATUS_PATH = core_config.supervisor_status_path()
 
 
 def load_cfg() -> dict:
@@ -44,6 +53,27 @@ def _find_certifi(venv_pythons) -> str:
         except Exception:
             pass
     return ""
+
+
+def channel_meta(cfg: dict) -> list:
+    """所有已知渠道（含未启用）的元信息，用于状态展示：是否启用 + 凭证是否齐。
+
+    凭证不齐（缺 token/secret，或白名单为空=没人能用）→ 状态 needs_setup。
+    """
+    def filled(*vals):
+        return all((v or "").strip() for v in vals)
+
+    tg = cfg.get("telegram", {})
+    fs = cfg.get("feishu", {})
+    wc = cfg.get("wecom", {})
+    return [
+        {"name": "telegram", "enabled": bool(tg.get("enabled")),
+         "creds_ok": filled(tg.get("token")) and filled(tg.get("allowed_users"))},
+        {"name": "feishu", "enabled": bool(fs.get("enabled")),
+         "creds_ok": filled(fs.get("app_id"), fs.get("app_secret")) and filled(fs.get("allowed_users"))},
+        {"name": "wecom", "enabled": bool(wc.get("enabled")),
+         "creds_ok": filled(wc.get("bot_id"), wc.get("bot_secret")) and filled(wc.get("allowed_users"))},
+    ]
 
 
 def build_components(cfg: dict) -> list:
@@ -120,9 +150,58 @@ def build_components(cfg: dict) -> list:
     return comps
 
 
+def _derive_state(meta: dict, st: dict) -> tuple:
+    """(显示状态, pid) —— off / needs_setup / connected / error。"""
+    alive = bool(st and st["p"] and st["p"].poll() is None)
+    pid = st["p"].pid if alive else None
+    if not meta["enabled"]:
+        return "off", None
+    if not meta["creds_ok"]:
+        return "needs_setup", pid
+    if alive and st["backoff"] == 1:
+        return "connected", pid
+    return "error", pid
+
+
+def write_status(state: dict, metas: list) -> None:
+    """把当前各渠道状态原子写到 supervisor.json（hub /supervisor 读它）。"""
+    channels = []
+    for m in metas:
+        st = state.get(m["name"])
+        s, pid = _derive_state(m, st)
+        channels.append({
+            "name": m["name"],
+            "enabled": m["enabled"],
+            "state": s,
+            "pid": pid,
+            "last_rc": (st["last_rc"] if st else None),
+            "restarts": (st["restarts"] if st else 0),
+            "backoff": (st["backoff"] if st else 1),
+            "last_error": (st["last_error"] if st else None),
+        })
+
+    hst = state.get("hub")
+    halive = bool(hst and hst["p"] and hst["p"].poll() is None)
+    hub_info = {
+        "state": "connected" if (halive and hst["backoff"] == 1) else "error",
+        "pid": hst["p"].pid if halive else None,
+        "restarts": hst["restarts"] if hst else 0,
+        "last_error": hst["last_error"] if hst else None,
+    }
+
+    out = {"ok": True, "ts": time.time(), "hub": hub_info, "channels": channels}
+    try:
+        tmp = STATUS_PATH.with_name(STATUS_PATH.name + ".tmp")
+        tmp.write_text(json.dumps(out, ensure_ascii=False))
+        tmp.replace(STATUS_PATH)
+    except Exception as e:
+        print(f"[supervisor] 写状态失败：{e}")
+
+
 def main() -> None:
     cfg = load_cfg()
     comps = build_components(cfg)
+    metas = channel_meta(cfg)
 
     # 修系统 CA 坏：统一用 certifi 证书包（否则飞书/企微 WS 握手报 self-signed certificate）
     certifi_path = _find_certifi([c["cmd"][0] for c in comps])
@@ -132,16 +211,41 @@ def main() -> None:
     # 代理由 config.toml 全权管理：先把继承来的代理变量清掉，再按需注入，避免外层 shell 的代理泄进子进程
     proxy_keys = ("http_proxy", "https_proxy", "all_proxy", "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY")
 
-    def start(c: dict):
+    def _pump_stderr(p, st):
+        """逐行读子进程 stderr：tee 给本进程 stderr（launchd 日志照常）+ 留最近若干行做 last_error。"""
+        for line in iter(p.stderr.readline, ""):
+            sys.stderr.write(line)
+            s = line.strip()
+            if s:
+                st["stderr_tail"].append(s)
+        try:
+            p.stderr.close()
+        except Exception:
+            pass
+
+    def start(c: dict, st: dict):
         base = {k: v for k, v in os.environ.items() if k not in proxy_keys}
+        base["CHATCC_SUPERVISED"] = "1"  # 渠道读 .env 时只补缺，不覆盖这里注入的 config.toml 值
         if certifi_path:
             base["SSL_CERT_FILE"] = certifi_path
-        p = subprocess.Popen(c["cmd"], cwd=c["cwd"], env={**base, **c["env"]})
+        p = subprocess.Popen(
+            c["cmd"], cwd=c["cwd"], env={**base, **c["env"]},
+            stderr=subprocess.PIPE, text=True, bufsize=1,
+        )
+        st["stderr_tail"].clear()
+        threading.Thread(target=_pump_stderr, args=(p, st), daemon=True).start()
         print(f"[supervisor] 起 {c['name']} pid={p.pid}")
         return p
 
-    state = {c["name"]: {"c": c, "p": start(c), "backoff": 1} for c in comps}
+    state = {
+        c["name"]: {"c": c, "p": None, "backoff": 1, "last_rc": None,
+                    "restarts": 0, "last_error": None, "stderr_tail": deque(maxlen=12)}
+        for c in comps
+    }
+    for st in state.values():
+        st["p"] = start(st["c"], st)
     print(f"[supervisor] 共 {len(comps)} 个进程在跑：{', '.join(state)}。Ctrl+C 全停。")
+    write_status(state, metas)
 
     def shutdown(*_):
         print("\n[supervisor] 收到退出信号，停所有子进程…")
@@ -150,6 +254,10 @@ def main() -> None:
                 st["p"].terminate()
             except Exception:
                 pass
+        try:
+            STATUS_PATH.unlink()  # 退出即抹掉状态文件，避免 hub 读到陈旧"在线"
+        except Exception:
+            pass
         sys.exit(0)
 
     signal.signal(signal.SIGINT, shutdown)
@@ -160,12 +268,21 @@ def main() -> None:
         for name, st in state.items():
             if st["p"].poll() is not None:
                 rc = st["p"].returncode
+                st["last_rc"] = rc
+                st["restarts"] += 1
+                if rc not in (0, None):
+                    # 崩溃：拿 stderr 尾巴最近一条非空行当 last_error
+                    st["last_error"] = next((ln for ln in reversed(st["stderr_tail"]) if ln), None)
                 print(f"[supervisor] {name} 退出(rc={rc})，{st['backoff']}s 后重启")
+                write_status(state, metas)  # 先把"error"刷出去，别等退避结束才可见
                 time.sleep(st["backoff"])
                 st["backoff"] = min(st["backoff"] * 2, 30)
-                st["p"] = start(st["c"])
+                st["p"] = start(st["c"], st)
             else:
-                st["backoff"] = 1  # 稳定运行则重置退避
+                if st["backoff"] != 1:
+                    st["backoff"] = 1  # 稳定运行则重置退避
+                    st["last_error"] = None  # 恢复了就清掉旧错误，状态回到 connected
+        write_status(state, metas)
 
 
 if __name__ == "__main__":

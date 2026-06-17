@@ -7,6 +7,7 @@
 业务真正干活仍复用 core/（runner/config）——Hub 只是把它从"进程内调用"升级成"HTTP 服务"。
 """
 import sys
+import json
 import time
 import asyncio
 import logging
@@ -125,6 +126,22 @@ async def status():
     }
 
 
+@app.get("/supervisor")
+async def supervisor():
+    """各渠道实时状态（supervisor 写的 supervisor.json）。
+
+    每渠道：state(off/needs_setup/connected/error) · pid · restarts · backoff · last_error。
+    supervisor 没在跑、或状态文件 >10s 没更新（可能 supervisor 自己挂了）→ 诚实降级，不假装在线。
+    """
+    path = config.supervisor_status_path()
+    try:
+        data = json.loads(path.read_text())
+        data["stale"] = (time.time() - data.get("ts", 0)) > 10
+        return data
+    except Exception:
+        return {"ok": False, "channels": [], "reason": "supervisor 状态不可用（未经 supervisor 启动？）"}
+
+
 @app.get("/stats")
 async def stats():
     """给菜单栏：谁调了多少次、上次活动时间。"""
@@ -144,7 +161,7 @@ def main() -> None:
     log.info("=" * 60)
     log.info("Hub 启动  http://%s:%d  引擎=%s 工具=%s 单飞=%d",
              HOST, PORT, CFG.engine, CFG.allowed_tools, CFG.max_concurrency)
-    log.info("  /chat (POST) · /status · /stats · /health")
+    log.info("  /chat (POST) · /status · /stats · /supervisor · /health")
     log.info("=" * 60)
     uvicorn.run(app, host=HOST, port=PORT, log_level="warning")
 

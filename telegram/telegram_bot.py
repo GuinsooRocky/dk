@@ -15,7 +15,7 @@ from pathlib import Path
 
 # ---- 复用 core 的去重/分段/白名单 + Hub 客户端 + 语音转写 ----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, security, dedup, chunking, hub_client, transcribe  # noqa: E402
+from core import config, security, dedup, chunking, hub_client  # noqa: E402
 
 from telegram import Update  # noqa: E402
 from telegram.ext import Application, MessageHandler, filters, ContextTypes  # noqa: E402
@@ -145,6 +145,8 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 ogg = Path(td) / "v.ogg"
                 await tg_file.download_to_drive(str(ogg))
                 # transcribe 阻塞(ffmpeg+sherpa) → 丢线程池
+                # 懒导入：让 numpy/sherpa-onnx 成为语音可选依赖（v1 无语音时零成本）
+                from core import transcribe  # noqa: E402
                 text = await asyncio.get_running_loop().run_in_executor(
                     None, transcribe.transcribe, str(ogg)
                 )

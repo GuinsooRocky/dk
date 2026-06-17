@@ -5,16 +5,38 @@ from dataclasses import dataclass
 
 
 def load_env(env_path) -> None:
-    """加载 .env。直接赋值（.env 权威）：避免 shell 已 export 同名变量时 .env 被静默忽略。"""
+    """加载 .env 到环境变量。
+
+    被 supervisor 托管时（CHATCC_SUPERVISED=1）：supervisor 按 config.toml 注入的值是
+    权威，.env 只补缺、不覆盖——否则旧 .env 会静默盖掉 config.toml 的设置。
+    单独运行时（无 supervisor）：.env 权威，盖过 shell 已 export 的同名变量（原意图）。
+    """
     p = Path(env_path)
     if not p.exists():
         return
+    supervised = bool(os.environ.get("CHATCC_SUPERVISED"))
     for line in p.read_text().splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         k, v = line.split("=", 1)
-        os.environ[k.strip()] = v.strip()
+        k, v = k.strip(), v.strip()
+        if supervised:
+            os.environ.setdefault(k, v)  # 注入值优先，.env 只补缺
+        else:
+            os.environ[k] = v            # 单跑时 .env 权威
+
+
+def runtime_dir() -> Path:
+    """跨进程运行时目录（与 work_dir 解耦，supervisor 与 hub 都用它交换状态）。"""
+    d = Path.home() / ".chat-cc-bot"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def supervisor_status_path() -> Path:
+    """supervisor 写、hub /supervisor 读的渠道状态文件。"""
+    return runtime_dir() / "supervisor.json"
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,33 @@
+# chat-cc-bot 合并依赖 —— 单解释器打包（py3.12）
+#
+# 由 protobuf 共存实测得出（2026-06-17）：四渠道 SDK + core 依赖在同一
+# py3.12 解释器同进程 import 无冲突；全程不拉入 protobuf/grpc。
+# 故无需 5 个 venv、无需 pin protobuf —— 单解释器打包路线 GREEN。
+# 装法：python3.12 -m venv .venv && .venv/bin/python -m pip install -r requirements.txt
+
+# ── Hub（唯一跑 claude 的中枢）──
+fastapi
+uvicorn
+
+# ── 渠道薄壳 ──
+python-telegram-bot>=21      # Telegram：官方 Bot API 长轮询
+lark-oapi==1.6.7             # 飞书：WS 长连接（无 ngrok）
+wecom-aibot-sdk-python       # 企业微信：智能机器人长连接
+
+# ── core 共享 ──
+httpx                        # hub_client → POST /chat
+certifi                      # 本机系统 CA 坏，统一证书包
+websockets                   # 渠道 WS
+
+# ── 飞书 webhook 版（待退役，仅 feishu_app_server.py / feishu_send.py 需要）──
+# Flask==3.0.0
+# pycryptodome==3.20.0
+
+# ── 语音转写（v2，可选）──
+# v1 不含语音；transcribe 已改懒导入，未装下面两个也不影响启动。
+# 启用语音再装（外加系统 ffmpeg + 首次懒下载 SenseVoice 模型 ~1GB）：
+# numpy
+# sherpa-onnx-core
+
+# ── 可切换引擎（仅 CLAUDE_ENGINE=sdk 时）──
+# claude-agent-sdk>=0.2
