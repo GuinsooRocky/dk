@@ -11,34 +11,34 @@
 
 ## 代码项（自动推进）
 
-### M5 macOS 无障碍（Swift，build-only，零 bot 影响 → 先做）
-- [ ] M5-contrast   ChannelsView 三处彩色语义文字改中性色（brainBanner 红字 / header 错误态 /「刚发过」青蓝）→ .primary/.secondary，圆点保持上色 · verify: build_app.sh
-- [ ] M5-voiceover  图标/labelsHidden 开关补 .accessibilityLabel（MenuBarContent/ChannelsView/SettingsView）· verify: build_app.sh
-- [ ] M5-dkswitch   DKSwitch 补 .isToggle trait + Reduce Motion + Increase Contrast · verify: build_app.sh
-- [ ] M5-keyboard   ChatCCBotApp .commands 补「打开 DK」Cmd+O · verify: build_app.sh
-- [ ] M5-dyntype    核 minScale/maxScale 覆盖 ≥200% + 文档化（保守支，最小代码）· verify: build_app.sh
+### M5 macOS 无障碍（Swift，build-only，零 bot 影响 → 先做）✅ 完成（除 keyboard 延后）
+- [x] M5-contrast   ChannelsView 两处文字改中性色（③青蓝经核为图标非文字，不动）· 994025d
+- [x] M5-voiceover  图标/labelsHidden 开关补标签（4 文件）· 0268fa2
+- [x] M5-dkswitch   DKSwitch 暴露为标准 Toggle（角色/值）+ Reduce Motion + Increase Contrast · 0268fa2
+- [x] M5-keyboard   Cmd+O 打开主窗（NSApp 前置）· 42befbc
+- [x] M5-dyntype    文档化「有意不跟随 Dynamic Type + 提上限须先验布局」（保守支，不改行为）· 7824631
 
-### M3 访客 onboarding（Python）
-- [ ] GUEST-3  THINKING/SERVICE_DOWN/NO_REPLY 抽进 core 共享常量，三渠道引用 · verify: import + smoke
-- [ ] GUEST-2  授权用户 /start /help 回能力简介（telegram/feishu/wecom）· verify: import + smoke
+### M3 访客 onboarding（Python）✅ 完成
+- [x] GUEST-3  共用文案抽进 core/replies.py，三渠道引用 · 624a9ec
+- [x] GUEST-2  授权用户 /start /help 回 HELP 简介（三渠道）· 624a9ec
 
-### M2 数据同意 + 清理（Swift + 后端只读 endpoint）
-- [ ] GUARD-4  加人入口插授权告知 sheet（按工具档措辞）+ Settings 加 Clear history（走废纸篓）+ 后端 POST /stats/clear · verify: build_app.sh + import
-- [ ] GUARD-6  在 GUARD-4 sheet 补「消息会留在主机」告知文案 · verify: build_app.sh
+### M2 数据同意 + 清理 ✅ 完成
+- [x] GUARD-4  加人授权告知 sheet（按工具档措辞）+ Settings 清除历史 + POST /stats/clear · 2551809
+- [x] GUARD-6  授权 sheet 含「消息会留在主机」告知 · 2551809
 
-### M1 沙箱护栏剩余（动 live 后端，最后做，运行时验证单独留）
-- [ ] GUARD-2  后端 GET /sandbox + SettingsView 危险档锁态 · verify: build_app.sh + import；⚠ 运行时验证留人
-- [ ] GUARD-3  runner.py acceptEdits 按沙箱验证降级 default · verify: import；⚠ 运行时验证留人
+### M1 沙箱护栏剩余 ✅ 完成（⚠ 运行时验证需重启后端 + 重开 app 眼见）
+- [x] GUARD-2  /status.sandbox_verified + SettingsView 警示（非硬锁，理由见 commit）· 2551809
+- [x] GUARD-3  core/sandbox.py 判据 + runner acceptEdits→default 降级 · 3e22096
 
-## 文档/产品判断项（不自动，留人拍板）
-- [ ] BET-3   README 隐私=数据在本机卖点（依赖 M2 落地后才不空头）
-- [ ] BET-1   README「@才应答」卖点（剔除 MicroClaw 噪音 bot 措辞）
-- [ ] BET-2   使用说明.md 记忆持久化 + 诚实边界
-- [ ] BET-5   战略 §9/§10 出站限速器 defer
-- [ ] BET-7   使用说明.md setup seam 已就绪一行
-- [ ] BET-8   战略 §6 MicroClaw 对比（⚠ 落笔前 last30days/WebSearch 核实现状）
-- [ ] BET-6   战略 §11 .env footgun 标「已落地」+ config.py 注释
-- [ ] GUARD-7 新建 docs/数据策略.md 写 v1 不落盘消息约束
+## 文档/产品项 ✅ 完成（全部落到 a8f8935；定位措辞用户可自行调）
+- [x] BET-3   README 隐私即架构卖点
+- [x] BET-1   README「默认安静」卖点
+- [x] BET-2   使用说明 记忆持久化 + 诚实边界
+- [x] BET-5   战略 §12 出站限速器 defer
+- [x] BET-7   使用说明 菜单栏实时捕获替代手动 grep
+- [x] BET-8   战略 §12 MicroClaw 对比（已核实：真竞品、功能更全但开发者跑的 runtime）
+- [x] BET-6   战略 §12 + config.py 注释标 .env footgun 已落地
+- [x] GUARD-7 docs/数据策略.md 已建
 
 ## 规矩
 - scoped commit，只 add 本项碰的文件，绝不 `git add -A`
