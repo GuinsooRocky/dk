@@ -129,17 +129,17 @@ def process(reply, sender: str, chat_id: str, text: str) -> None:
         hub_client.report_pending("feishu", sender)   # 实时抓 ID：上报让 app 显示"想加入"
         return
     log.info("转发 from=%s chat=%s text=%r", sender, chat_id, text[:80])
-    reply("思考中...")
+    reply("思考中…")
     try:
         resp = hub_client.ask_hub_sync("feishu", chat_id, sender, text)
     except Exception as e:
         log.exception("调 Hub 失败")
         try:
-            reply(f"后端(Hub)没连上：{e}")
+            reply("服务没连上，稍后再试。")
         except Exception:
             pass
         return
-    answer = resp.get("text") or "(空)"
+    answer = resp.get("text") or "（没收到回复）"
     chunks = chunking.split_chunks(answer, MAX_FEISHU_MSG)
     for i, c in enumerate(chunks, 1):
         reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")

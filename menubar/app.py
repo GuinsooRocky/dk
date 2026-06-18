@@ -39,7 +39,7 @@ class App(rumps.App):
             self.m_status, self.m_stats, self.m_users, self.m_last,
             None,
             rumps.MenuItem("刷新", callback=lambda _: self._tick()),
-            rumps.MenuItem("打开 Hub 日志", callback=self._open_log),
+            rumps.MenuItem("打开服务日志", callback=self._open_log),
         ]
         rumps.Timer(lambda _: self._tick(), 10).start()
         self._tick()
@@ -51,7 +51,7 @@ class App(rumps.App):
         st = _get("/status")
         if not st:
             self.title = "🔴"
-            self.m_status.title = "状态：Hub 没连上"
+            self.m_status.title = "状态：服务没连上"
             self.m_stats.title = "用量：—"
             self.m_users.title = "调用者：—"
             self.m_last.title = "上次：—"

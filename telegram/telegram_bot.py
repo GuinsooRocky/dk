@@ -75,7 +75,7 @@ def _strip_trigger(update: Update, text: str) -> str:
 
 async def _respond(context, chat_id: str, sender: str, text: str, heard: str = "", image_path: str = "") -> None:
     """占位 → 转发 Hub → 原地编辑成答案。heard(语音)回显听到的；image_path(图片)让 Hub 读图。"""
-    ph_text = "🖼 看图中..." if image_path else (f"🎤 «{heard}»\n思考中..." if heard else "思考中...")
+    ph_text = "🖼 看图中…" if image_path else (f"🎤 «{heard}»\n思考中…" if heard else "思考中…")
     placeholder = await context.bot.send_message(chat_id=chat_id, text=ph_text)
     log.info("转发 from=%s chat=%s text=%r img=%s", sender, chat_id, text[:80], bool(image_path))
     try:
@@ -83,10 +83,10 @@ async def _respond(context, chat_id: str, sender: str, text: str, heard: str = "
     except Exception as e:
         log.exception("调 Hub 失败")
         await context.bot.edit_message_text(
-            text=f"后端(Hub)没连上：{e}", chat_id=chat_id, message_id=placeholder.message_id
+            text="服务没连上，稍后再试。", chat_id=chat_id, message_id=placeholder.message_id
         )
         return
-    answer = resp.get("text") or "(空)"
+    answer = resp.get("text") or "（没收到回复）"
     if heard:
         answer = f"🎤 «{heard}»\n\n{answer}"
     chunks = chunking.split_chunks(answer, MAX_TG_MSG)
@@ -154,7 +154,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
         except Exception as e:
             log.exception("转写失败")
-            await context.bot.send_message(chat_id=chat_id, text=f"语音转写失败：{e}")
+            await context.bot.send_message(chat_id=chat_id, text="语音没转成功，再说一次？")
             return
         if not (text or "").strip():
             await context.bot.send_message(chat_id=chat_id, text="没听清，再说一次？")
