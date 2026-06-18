@@ -147,34 +147,22 @@ private struct ChannelBlock: View {
     }
 
     private var childIds: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // 想加入（发过消息但还没放行）
+        VStack(alignment: .leading, spacing: 7) {
+            // 已允许：每个 ID 一个紧凑胶囊（值+×贴一起，不撑满整行）
+            ForEach(allowedHere, id: \.self) { uid in
+                idChip(uid)
+            }
+            // 想加入（发过消息但还没放行）：值 + 加入按钮，靠左成组
             ForEach(pendingHere) { p in
-                HStack(spacing: 8) {
+                HStack(spacing: 7) {
                     Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
                     Text(i18n.t("access.just_messaged")).dkFont(11)
                         .foregroundStyle(Color(red: 0.35, green: 0.78, blue: 0.98))
-                    Spacer()
                     Button(i18n.t("access.join")) {
                         Task { await model.editAllow(row.meta.key, p.user, "add") }
-                    }
+                    }.controlSize(.small)
                 }
-                .padding(.vertical, 1)
-            }
-            // 已允许：ID 中性显示（无绿点，避免误读成"连接验证通过"），长 ID 中间省略，× 移除
-            ForEach(allowedHere, id: \.self) { uid in
-                HStack(spacing: 8) {
-                    Text(uid).dkFont(12).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                    Spacer()
-                    Button {
-                        Task { await model.editAllow(row.meta.key, uid, "remove") }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill").dkFont(12).foregroundStyle(.tertiary)
-                    }
-                    .buttonStyle(.plain).help(i18n.t("access.remove"))
-                }
-                .padding(.vertical, 1)
+                .fixedSize()
             }
             if allowedHere.isEmpty && pendingHere.isEmpty {
                 Text(i18n.t("access.empty_channel")).dkFont(12).foregroundStyle(.tertiary)
@@ -183,7 +171,7 @@ private struct ChannelBlock: View {
             if showAdd {
                 HStack(spacing: 6) {
                     TextField(i18n.t("access.manual"), text: $newId)
-                        .textFieldStyle(.roundedBorder).focused($addFocused)
+                        .textFieldStyle(.roundedBorder).focused($addFocused).frame(maxWidth: 240)
                     Button(i18n.t("access.add")) {
                         let id = newId.trimmingCharacters(in: .whitespaces)
                         guard !id.isEmpty else { return }
@@ -205,6 +193,22 @@ private struct ChannelBlock: View {
             Rectangle().fill(Color.primary.opacity(0.10))
                 .frame(width: 1).padding(.leading, 13).padding(.vertical, 1)
         }
+    }
+
+    // 紧凑胶囊：ID + × 贴在一起，整体靠左不撑满（仿 onlychat rounded-full tag）
+    private func idChip(_ uid: String) -> some View {
+        HStack(spacing: 5) {
+            Text(uid).dkFont(12).foregroundStyle(.secondary)
+            Button {
+                Task { await model.editAllow(row.meta.key, uid, "remove") }
+            } label: {
+                Image(systemName: "xmark").dkFont(9, .semibold).foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain).help(i18n.t("access.remove"))
+        }
+        .fixedSize()
+        .padding(.leading, 10).padding(.trailing, 7).padding(.vertical, 4)
+        .background(Capsule().fill(Color.primary.opacity(0.07)))
     }
 
     private var subLabel: String {
