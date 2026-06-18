@@ -160,14 +160,18 @@ private struct ChannelBlock: View {
             // 想加入（发过消息但还没放行）：等待图标 + ID + 加入
             ForEach(pendingHere) { p in
                 HStack(spacing: DKSpace.sm) {
-                    Image(systemName: "person.crop.circle.badge.clock").dkFont(12)
+                    Image(systemName: "person.crop.circle.badge.clock").dkFont(13)
                         .foregroundStyle(Color(red: 0.35, green: 0.78, blue: 0.98))
                     Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: DKSpace.sm)
                     Button(i18n.t("access.join")) {
                         Task { await model.editAllow(row.meta.key, p.user, "add") }
                     }.controlSize(.small)
-                    Spacer(minLength: 0)
                 }
+                .padding(.horizontal, DKSpace.md).padding(.vertical, DKSpace.xs)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(red: 0.35, green: 0.78, blue: 0.98).opacity(0.10)))
             }
             if allowedHere.isEmpty && pendingHere.isEmpty {
                 Text(i18n.t("access.empty_channel")).dkFont(12).foregroundStyle(.tertiary)
@@ -200,19 +204,22 @@ private struct ChannelBlock: View {
         }
     }
 
-    // 成员行：user 图标 + ID + × 紧跟（不是 tag 胶囊；× 贴 ID 不甩远）
+    // 成员行：整行列表项（铺满宽度 + 行底色 + 内边距），一眼是渠道的子项，不是 tag
     private func idRow(_ uid: String) -> some View {
         HStack(spacing: DKSpace.sm) {
-            Image(systemName: "person.crop.circle.fill").dkFont(12).foregroundStyle(.tertiary)
+            Image(systemName: "person.crop.circle.fill").dkFont(13).foregroundStyle(.tertiary)
             Text(uid).dkFont(12).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: DKSpace.sm)
             Button {
                 Task { await model.editAllow(row.meta.key, uid, "remove") }
             } label: {
-                Image(systemName: "xmark.circle.fill").dkFont(12).foregroundStyle(.tertiary).dkHit(18)
+                Image(systemName: "xmark").dkFont(10).foregroundStyle(.secondary).dkHit(22)
             }
             .buttonStyle(.plain).help(i18n.t("access.remove"))
-            Spacer(minLength: 0)
         }
+        .padding(.horizontal, DKSpace.md).padding(.vertical, DKSpace.sm)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
     }
 
     private var subLabel: String {
