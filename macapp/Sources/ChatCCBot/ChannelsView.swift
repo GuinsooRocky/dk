@@ -148,21 +148,21 @@ private struct ChannelBlock: View {
 
     private var childIds: some View {
         VStack(alignment: .leading, spacing: DKSpace.sm) {
-            // 已允许：每个 ID 一个紧凑胶囊（值+×贴一起，不撑满整行）
+            // 已允许：成员行（user 图标 + ID + ×），不是 tag
             ForEach(allowedHere, id: \.self) { uid in
-                idChip(uid)
+                idRow(uid)
             }
-            // 想加入（发过消息但还没放行）：值 + 加入按钮，靠左成组
+            // 想加入（发过消息但还没放行）：等待图标 + ID + 加入
             ForEach(pendingHere) { p in
-                HStack(spacing: 7) {
-                    Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
-                    Text(i18n.t("access.just_messaged")).dkFont(11)
+                HStack(spacing: DKSpace.sm) {
+                    Image(systemName: "person.crop.circle.badge.clock").dkFont(12)
                         .foregroundStyle(Color(red: 0.35, green: 0.78, blue: 0.98))
+                    Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
                     Button(i18n.t("access.join")) {
                         Task { await model.editAllow(row.meta.key, p.user, "add") }
                     }.controlSize(.small)
+                    Spacer(minLength: 0)
                 }
-                .fixedSize()
             }
             if allowedHere.isEmpty && pendingHere.isEmpty {
                 Text(i18n.t("access.empty_channel")).dkFont(12).foregroundStyle(.tertiary)
@@ -195,19 +195,19 @@ private struct ChannelBlock: View {
         }
     }
 
-    // 紧凑胶囊：ID + × 贴在一起，整体靠左不撑满（仿原生 token/tag）
-    private func idChip(_ uid: String) -> some View {
-        HStack(spacing: DKSpace.xs) {
-            Text(uid).dkFont(12).foregroundStyle(.secondary)
+    // 成员行：user 图标 + ID + × 紧跟（不是 tag 胶囊；× 贴 ID 不甩远）
+    private func idRow(_ uid: String) -> some View {
+        HStack(spacing: DKSpace.sm) {
+            Image(systemName: "person.crop.circle.fill").dkFont(12).foregroundStyle(.tertiary)
+            Text(uid).dkFont(12).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
             Button {
                 Task { await model.editAllow(row.meta.key, uid, "remove") }
             } label: {
-                Image(systemName: "xmark").dkFont(9, .semibold).foregroundStyle(.secondary).dkHit(18)
+                Image(systemName: "xmark.circle.fill").dkFont(12).foregroundStyle(.tertiary).dkHit(18)
             }
             .buttonStyle(.plain).help(i18n.t("access.remove"))
+            Spacer(minLength: 0)
         }
-        .fixedSize()
-        .dkChip()
     }
 
     private var subLabel: String {
