@@ -18,7 +18,7 @@ struct SettingsView: View {
     @State private var disableSleepOn = false
 
     private let allTools = ["Read", "Glob", "Grep", "WebFetch", "Bash", "Write", "Edit"]
-    private let writeTools = ["Bash", "Write", "Edit"]
+    private let readonlyTools = ["Read", "Glob", "Grep", "WebFetch"]
 
     var body: some View {
         ScrollView {
@@ -122,16 +122,52 @@ struct SettingsView: View {
         }
     }
 
+    // 工具三档：只读(默认) / 读+写 / 全权(含运行命令 Bash)。单选替代逐个勾选，避免随手开 Bash。
+    private enum ToolTier: CaseIterable, Hashable {
+        case readonly, readwrite, full
+    }
+
+    private func toolList(_ tier: ToolTier) -> [String] {
+        switch tier {
+        case .readonly:  return readonlyTools
+        case .readwrite: return allTools.filter { $0 != "Bash" }   // 读+写，但不放运行命令
+        case .full:      return allTools
+        }
+    }
+
+    private func tierLabel(_ tier: ToolTier) -> String {
+        switch tier {
+        case .readonly:  return i18n.t("settings.tools_readonly")
+        case .readwrite: return i18n.t("settings.tools_readwrite")
+        case .full:      return i18n.t("settings.tools_full")
+        }
+    }
+
+    private func tierColor(_ tier: ToolTier) -> Color {
+        switch tier {
+        case .readonly:  return .secondary   // 安心
+        case .readwrite: return .primary
+        case .full:      return .orange      // 警示：含运行命令
+        }
+    }
+
+    // 旧的任意工具组合也归到最近一档显示。
+    private var currentTier: ToolTier {
+        if tools.contains("Bash") { return .full }
+        if tools.contains("Write") || tools.contains("Edit") { return .readwrite }
+        return .readonly
+    }
+
     private var toolsMenu: some View {
         Menu {
-            ForEach(allTools, id: \.self) { t in
-                Button { toggleTool(t) } label: {
-                    Label(t, systemImage: tools.contains(t) ? "checkmark" : "")
+            ForEach(ToolTier.allCases, id: \.self) { tier in
+                Button { setTier(tier) } label: {
+                    Label(tierLabel(tier), systemImage: currentTier == tier ? "checkmark" : "")
                 }
             }
         } label: {
             HStack(spacing: 4) {
-                Text(toolsSummary).dkFont(13)
+                Text(tierLabel(currentTier)).dkFont(13).foregroundStyle(tierColor(currentTier))
                 Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
             }
         }
@@ -166,17 +202,10 @@ struct SettingsView: View {
         })).labelsHidden().toggleStyle(DKSwitchStyle())
     }
 
-    private var toolsSummary: String {
-        let ordered = allTools.filter { tools.contains($0) }
-        if ordered.isEmpty { return "—" }
-        let hasWrite = ordered.contains { writeTools.contains($0) }
-        return "\(i18n.t("settings.tools_count", ordered.count)) · \(hasWrite ? i18n.t("settings.haswrite") : i18n.t("settings.readonly"))"
-    }
-
-    private func toggleTool(_ t: String) {
-        if tools.contains(t) { tools.remove(t) } else { tools.insert(t) }
-        let joined = allTools.filter { tools.contains($0) }.joined(separator: ",")
-        Task { await model.setTools(joined) }
+    private func setTier(_ tier: ToolTier) {
+        let list = toolList(tier)
+        tools = Set(list)
+        Task { await model.setTools(list.joined(separator: ",")) }
     }
 
     // MARK: 行布局
@@ -185,15 +214,15 @@ struct SettingsView: View {
 
     private func cardWrap<C: View>(@ViewBuilder _ content: () -> C) -> some View {
         VStack(spacing: 0) { content() }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, DKSpace.lg)
             .dkCard()
     }
 
     private func row<Control: View>(_ title: String, sub: String? = nil, help: String? = nil,
                                     @ViewBuilder control: () -> Control) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 4) {
+        HStack(alignment: .center, spacing: DKSpace.md) {
+            VStack(alignment: .leading, spacing: DKSpace.xxs) {
+                HStack(spacing: DKSpace.xs) {
                     Text(title).dkFont(14, .medium)
                     if let help {
                         Image(systemName: "questionmark.circle").foregroundStyle(.secondary).help(help)
@@ -201,10 +230,10 @@ struct SettingsView: View {
                 }
                 if let sub { Text(sub).dkFont(12).foregroundStyle(.secondary) }
             }
-            Spacer(minLength: 12)
+            Spacer(minLength: DKSpace.md)
             control()
         }
-        .padding(.vertical, 10)
+        .padding(.vertical, DKSpace.md)
     }
 
     // MARK: 同步

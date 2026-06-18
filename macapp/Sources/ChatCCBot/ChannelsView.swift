@@ -9,13 +9,13 @@ struct ChannelsView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: DKSpace.lg) {
                 header
                 brainBanner
                 usageCard
                 channelList
             }
-            .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 18)
+            .padding(.horizontal, DKSpace.lg).padding(.vertical, DKSpace.lg)
             .controlSize(dkControlSize(scale))   // 渠道里的按钮也随字体档放大
         }
     }
@@ -51,16 +51,16 @@ struct ChannelsView: View {
     private var usageCard: some View {
         let s = model.stats
         let up = model.hubStatus?.uptime_sec ?? 0
-        return HStack(spacing: 22) {
+        return HStack(spacing: DKSpace.xl) {
             usageMetric("\(s?.total ?? 0)", i18n.t("insights.total_label"))
             usageMetric(uptimeStr(up), i18n.t("insights.uptime_label"))
             Spacer()
-            HStack(spacing: 6) {
+            HStack(spacing: DKSpace.sm) {
                 usagePill(.dkGreen, i18n.t("insights.ok", s?.ok ?? 0))
                 usagePill(.dkRed, i18n.t("insights.err", s?.err ?? 0))
             }
         }
-        .padding(14)
+        .padding(DKSpace.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .dkCard()
     }
@@ -120,10 +120,10 @@ private struct ChannelBlock: View {
     @FocusState private var addFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: DKSpace.sm) {
+            HStack(spacing: DKSpace.md) {
                 Image(systemName: row.meta.symbol).font(.title3).frame(width: 26)
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: DKSpace.xs) {
                     Text(i18n.t(row.meta.nameKey)).dkFont(14, .medium)
                     HStack(spacing: 6) {
                         Text(row.state.glyph).foregroundStyle(row.state.color)
@@ -143,11 +143,11 @@ private struct ChannelBlock: View {
 
             childIds   // 子集：这个渠道下的 ID（缩进，主子集关系）
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, DKSpace.md)
     }
 
     private var childIds: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: DKSpace.sm) {
             // 已允许：每个 ID 一个紧凑胶囊（值+×贴一起，不撑满整行）
             ForEach(allowedHere, id: \.self) { uid in
                 idChip(uid)
@@ -188,27 +188,26 @@ private struct ChannelBlock: View {
                 }.buttonStyle(.link)
             }
         }
-        .padding(.leading, 38)
+        .padding(.leading, DKSpace.childIndent)
         .overlay(alignment: .leading) {   // 树形连接线，体现"渠道→ID"主子集
             Rectangle().fill(Color.primary.opacity(0.10))
                 .frame(width: 1).padding(.leading, 13).padding(.vertical, 1)
         }
     }
 
-    // 紧凑胶囊：ID + × 贴在一起，整体靠左不撑满（仿 onlychat rounded-full tag）
+    // 紧凑胶囊：ID + × 贴在一起，整体靠左不撑满（仿原生 token/tag）
     private func idChip(_ uid: String) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: DKSpace.xs) {
             Text(uid).dkFont(12).foregroundStyle(.secondary)
             Button {
                 Task { await model.editAllow(row.meta.key, uid, "remove") }
             } label: {
-                Image(systemName: "xmark").dkFont(9, .semibold).foregroundStyle(.secondary)
+                Image(systemName: "xmark").dkFont(9, .semibold).foregroundStyle(.secondary).dkHit(18)
             }
             .buttonStyle(.plain).help(i18n.t("access.remove"))
         }
         .fixedSize()
-        .padding(.leading, 10).padding(.trailing, 7).padding(.vertical, 4)
-        .background(Capsule().fill(Color.primary.opacity(0.07)))
+        .dkChip()
     }
 
     private var subLabel: String {
