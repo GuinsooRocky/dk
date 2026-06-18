@@ -28,7 +28,7 @@ struct ChannelsView: View {
                  ? i18n.t(model.lastError!)
                  : (model.reachable ? i18n.t("channels.readonly_safe") : i18n.t("channels.backend_down")))
                 .dkFont(13)
-                .foregroundStyle((model.lastError != nil || !model.reachable) ? Color.red : Color.secondary)
+                .foregroundStyle((model.lastError != nil || !model.reachable) ? Color.primary : Color.secondary)   // 错误态文字用 primary 提对比；菜单栏警告图标+文案本身仍标错
         }
     }
 
@@ -39,7 +39,7 @@ struct ChannelsView: View {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
                 Text(i18n.t(proxied ? "brain.offline_proxy" : "brain.offline_direct"))
-                    .dkFont(13).foregroundStyle(.red)
+                    .dkFont(13).foregroundStyle(.primary)   // 文字改中性色提对比；红图标+红底仍标警示，颜色不单独承载语义
                 Spacer()
             }
             .padding(.vertical, 8).padding(.horizontal, 10)
@@ -86,27 +86,33 @@ struct ChannelsView: View {
         return "\(sec / 60)m"
     }
 
+    // 每个渠道独立成卡片（填充+描边，与用量卡一致），卡片间留间距
     private var channelList: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: DKSpace.md) {
             ForEach(model.channelRows) { row in
                 ChannelBlock(row: row)
-                DKHairline().padding(.leading, 38)
+                    .padding(DKSpace.lg)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .dkCard()
             }
             weChatRow
+                .padding(DKSpace.lg)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .dkCard()
         }
     }
 
     private var weChatRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: DKSpace.md) {
             Image(systemName: WECHAT_META.symbol).font(.title3).frame(width: 26)
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: DKSpace.xxs) {
                 Text(i18n.t(WECHAT_META.nameKey)).dkFont(14, .medium)
                 Text(i18n.t(WECHAT_META.noteKey)).dkFont(13).foregroundStyle(.secondary)
             }
             Spacer()
             Text(i18n.t("channels.wechat_unavailable")).dkFont(13).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 12).opacity(0.55)
+        .opacity(0.55)
     }
 }
 
@@ -143,7 +149,6 @@ private struct ChannelBlock: View {
 
             childIds   // 子集：这个渠道下的 ID（缩进，主子集关系）
         }
-        .padding(.vertical, DKSpace.md)
     }
 
     private var childIds: some View {
