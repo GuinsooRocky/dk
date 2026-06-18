@@ -54,6 +54,7 @@
   "insights.just_started": "just started",
   "insights.empty_title": "No activity yet",
   "insights.empty_sub": "Connect a channel to start chatting",
+  "insights.empty_sub_waiting": "Channels are connected — once someone messages the bot, conversations show up here",
   "insights.most_active": "Most active",
 
   "settings.tools": "Allowed tools",

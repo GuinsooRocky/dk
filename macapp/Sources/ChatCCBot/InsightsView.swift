@@ -32,7 +32,8 @@ struct InsightsView: View {
         VStack(spacing: 10) {
             Image(systemName: "tray").font(.system(size: 34)).foregroundStyle(.tertiary)
             Text(i18n.t("insights.empty_title")).dkFont(16, .semibold)
-            Text(i18n.t("insights.empty_sub")).dkFont(13).foregroundStyle(.secondary)
+            Text(i18n.t(model.hasEnabledChannel ? "insights.empty_sub_waiting" : "insights.empty_sub"))
+                .dkFont(13).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 70)

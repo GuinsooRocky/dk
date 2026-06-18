@@ -54,6 +54,7 @@
   "insights.just_started": "刚启动",
   "insights.empty_title": "还没有对话",
   "insights.empty_sub": "去「渠道」接入一个，就能开始和它聊",
+  "insights.empty_sub_waiting": "渠道已接好，等别人给 bot 发条消息，对话就出现在这里",
   "insights.most_active": "最活跃的人",
 
   "settings.tools": "允许的工具",

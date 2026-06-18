@@ -45,6 +45,11 @@ final class HubModel: ObservableObject {
         return supervisor?.channels?.first { $0.name == name }?.enabled ?? false
     }
 
+    /// 是否已接入任一渠道：用来区分空态文案（没接 vs 接了在等消息）。
+    var hasEnabledChannel: Bool {
+        supervisor?.channels?.contains { $0.enabled } ?? false
+    }
+
     /// 改允许的工具：整体重启，多等一会。
     func setTools(_ tools: String) async {
         lastError = nil

@@ -174,9 +174,10 @@ async def amain() -> None:
     await client.connect_async()
     last_beat = 0.0
     while getattr(client, "is_connected", True):
-        # 只在 WS 真连着(is_connected)时上报心跳 → hub 据此显示真"在线"而非"进程活着"。
-        # 纯本地回环、不碰 claude；120s 一拍，断开则停拍 → hub 5min 内翻"连接中"。
-        if time.monotonic() - last_beat >= 120:
+        # 只在"认证通过"(is_authenticated：服务器确认 bot_id/secret 有效)时上报心跳。
+        # 假凭证 → WS 能握上手(is_connected=真)但认证过不了(is_authenticated=假) → 不拍
+        # → hub 显示"连接中"而非假"在线"。纯本地回环、不碰 claude。
+        if getattr(client, "is_authenticated", False) and time.monotonic() - last_beat >= 120:
             hub_client.report_heartbeat("wecom")
             last_beat = time.monotonic()
         await asyncio.sleep(1)
