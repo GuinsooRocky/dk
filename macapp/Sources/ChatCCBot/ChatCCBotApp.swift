@@ -42,6 +42,13 @@ struct ChatCCBotApp: App {
                 Button("默认字体") { appState.reset() }
                     .keyboardShortcut("0", modifiers: .command)
             }
+            CommandGroup(after: .windowList) {
+                Button("打开 DK") {   // Cmd+O 把主窗拉到前台（窗口存在时；菜单栏「打开」走 openWindow 可重建）
+                    NSApp.activate(ignoringOtherApps: true)
+                    NSApp.windows.first(where: { $0.canBecomeMain })?.makeKeyAndOrderFront(nil)
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
         }
 
         MenuBarExtra {
