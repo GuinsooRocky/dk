@@ -12,8 +12,8 @@
         "~/.gnupg",
         "~/.netrc",
         "~/Library/Keychains",
-        "~/Desktop/my-code/chat-cc-bot/feishu-claude/.env",
-        "~/Desktop/my-code/chat-cc-bot/wechat-claude-bot/.env"
+        "~/Desktop/my-code/dk/feishu-claude/.env",
+        "~/Desktop/my-code/dk/wechat-claude-bot/.env"
       ]
     },
     "network": {

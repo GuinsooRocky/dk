@@ -7,9 +7,10 @@
   "tab.insights": "用量",
   "tab.settings": "设置",
 
-  "status.online_idle": "🤖 在线 · 空闲",
-  "status.busy": "🤖 正在处理…",
+  "status.online_idle": "在线 · 随时能答",
+  "status.busy": "正在回答…",
   "status.offline": "🔴 后端未连上",
+  "status.brain_down": "⚠️ 连不上 Claude · 答不了",
 
   "channels.header": "你的聊天渠道",
   "channels.readonly_safe": "ⓘ 只读默认 · 安全",

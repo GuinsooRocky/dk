@@ -24,7 +24,7 @@
 
 1. **推荐：`--settings` 透传**（重构后 `core/runner` 已支持）——在 `.env` 设
    ```
-   CLAUDE_SETTINGS=/Users/你/Desktop/my-code/chat-cc-bot/sandbox-settings.json
+   CLAUDE_SETTINGS=/Users/你/Desktop/my-code/dk/sandbox-settings.json
    ```
    run_claude 会带 `--settings <该文件>` 启动 claude，沙箱只对 bot 进程生效。
 2. 或放到工作目录的 `.claude/settings.json`（如 `~/claude-feishu-workdir/.claude/settings.json`）。

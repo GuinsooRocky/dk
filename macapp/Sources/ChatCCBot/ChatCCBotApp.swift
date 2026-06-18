@@ -51,5 +51,6 @@ struct ChatCCBotApp: App {
         } label: {
             Image(systemName: model.menuSymbol)
         }
+        .menuBarExtraStyle(.window)   // 自控样式：彩色状态点 + 不置灰
     }
 }

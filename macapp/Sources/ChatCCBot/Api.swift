@@ -11,7 +11,7 @@ enum HubApi {
         let candidates = [
             URL(fileURLWithPath: cwd).appendingPathComponent("config.toml"),
             URL(fileURLWithPath: cwd).deletingLastPathComponent().appendingPathComponent("config.toml"),
-            URL(fileURLWithPath: "\(NSHomeDirectory())/Desktop/my-code/chat-cc-bot/config.toml"),
+            URL(fileURLWithPath: "\(NSHomeDirectory())/Desktop/my-code/dk/config.toml"),
         ]
         for url in candidates {
             if let text = try? String(contentsOf: url, encoding: .utf8),

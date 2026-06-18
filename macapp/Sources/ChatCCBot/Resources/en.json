@@ -7,9 +7,10 @@
   "tab.insights": "Insights",
   "tab.settings": "Settings",
 
-  "status.online_idle": "🤖 Online · idle",
-  "status.busy": "🤖 Working…",
+  "status.online_idle": "Online · ready",
+  "status.busy": "Answering…",
   "status.offline": "🔴 Backend not connected",
+  "status.brain_down": "⚠️ Can't reach Claude",
 
   "channels.header": "Your channels",
   "channels.readonly_safe": "ⓘ Read-only · safe",
