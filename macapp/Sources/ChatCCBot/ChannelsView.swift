@@ -123,6 +123,7 @@ private struct ChannelBlock: View {
     let row: ChannelDisplay
     @State private var showAdd = false
     @State private var newId = ""
+    @State private var pendingAddId: String?
     @FocusState private var addFocused: Bool
 
     var body: some View {
@@ -149,6 +150,30 @@ private struct ChannelBlock: View {
 
             childIds   // 子集：这个渠道下的 ID（缩进，主子集关系）
         }
+        .alert(i18n.t("access.confirm_title"),
+               isPresented: Binding(get: { pendingAddId != nil },
+                                    set: { if !$0 { pendingAddId = nil } })) {
+            Button(i18n.t("access.cancel"), role: .cancel) { pendingAddId = nil }
+            Button(i18n.t("access.join")) {
+                if let id = pendingAddId {
+                    Task { await model.editAllow(row.meta.key, id, "add") }
+                }
+                pendingAddId = nil
+            }
+        } message: {
+            Text(consentMessage)
+        }
+    }
+
+    // 加人前的授权告知：按当前工具档动态措辞 + 数据留存知情(GUARD-4/6)。
+    private var consentMessage: String {
+        let tools = model.hubStatus?.tools ?? ""
+        var msg = i18n.t("access.confirm_read")
+        if tools.contains("Bash") || tools.contains("Write") || tools.contains("Edit") {
+            msg += i18n.t("access.confirm_write")
+        }
+        msg += "\n" + i18n.t("access.confirm_data")
+        return msg
     }
 
     private var childIds: some View {
@@ -165,7 +190,7 @@ private struct ChannelBlock: View {
                     Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: DKSpace.sm)
                     Button(i18n.t("access.join")) {
-                        Task { await model.editAllow(row.meta.key, p.user, "add") }
+                        pendingAddId = p.user   // 先弹授权告知，确认后才加(GUARD-4)
                     }.controlSize(.small)
                 }
                 .padding(.horizontal, DKSpace.md).padding(.vertical, DKSpace.xs)
@@ -184,7 +209,8 @@ private struct ChannelBlock: View {
                     Button(i18n.t("access.add")) {
                         let id = newId.trimmingCharacters(in: .whitespaces)
                         guard !id.isEmpty else { return }
-                        Task { await model.editAllow(row.meta.key, id, "add"); newId = ""; showAdd = false }
+                        newId = ""; showAdd = false
+                        pendingAddId = id   // 先弹授权告知，确认后才加(GUARD-4)
                     }.disabled(newId.trimmingCharacters(in: .whitespaces).isEmpty)
                     Button(i18n.t("access.cancel")) { showAdd = false; newId = "" }
                 }

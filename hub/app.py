@@ -21,7 +21,7 @@ import uvicorn
 
 # ---- 复用跨渠道 core（仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, runner, threads  # noqa: E402
+from core import config, runner, threads, sandbox  # noqa: E402
 
 config.load_env(Path(__file__).parent / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
@@ -182,6 +182,7 @@ async def status():
         "max_concurrency": CFG.max_concurrency,
         "proxy": _current_proxy(),
         "claude_reachable": _BRAIN["reachable"],   # 大脑可达：渠道连着也得这环通才答得了
+        "sandbox_verified": sandbox.verified(CFG.claude_settings),   # 沙箱是否真生效(GUARD-2)
     }
 
 
@@ -344,6 +345,15 @@ async def stats():
             "last_at": _STATS["last_at"],
             "last_text": _STATS["last_text"],
         }
+
+
+@app.post("/stats/clear")
+async def stats_clear():
+    """清空内存统计（last_text/by_user/计数）——用户在设置里「清除历史」调。诊断日志不动。"""
+    with _stats_lock:
+        _STATS.update({"total": 0, "ok": 0, "busy": 0, "err": 0,
+                       "by_user": {}, "last_at": 0.0, "last_text": ""})
+    return {"ok": True}
 
 
 def main() -> None:

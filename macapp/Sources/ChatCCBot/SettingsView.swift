@@ -16,6 +16,7 @@ struct SettingsView: View {
     @State private var toolsLoaded = false
     @State private var autostartOn = false
     @State private var disableSleepOn = false
+    @State private var showClearConfirm = false
 
     private let allTools = ["Read", "Glob", "Grep", "WebFetch", "Bash", "Write", "Edit"]
     private let readonlyTools = ["Read", "Glob", "Grep", "WebFetch"]
@@ -31,7 +32,7 @@ struct SettingsView: View {
                     div
                     row(i18n.t("settings.claude_status"), sub: claude.detail.isEmpty ? nil : claude.detail) { claudeControl }
                     div
-                    row(i18n.t("settings.tools"), sub: i18n.t("settings.tools_sub")) { toolsMenu }
+                    row(i18n.t("settings.tools"), sub: needsSandboxWarning ? i18n.t("settings.tools_sandbox_warn") : i18n.t("settings.tools_sub")) { toolsMenu }
                     div
                     row(i18n.t("settings.proxy"), sub: i18n.t("settings.proxy_note")) { proxyControl }
                     div
@@ -44,7 +45,10 @@ struct SettingsView: View {
                     row(i18n.t("settings.sleep"), sub: i18n.t(sleepSubKey)) { sleepMenu }
                 }
 
-                Button(i18n.t("settings.open_log")) { openHubLog() }.dkFont(13)
+                HStack(spacing: 12) {
+                    Button(i18n.t("settings.open_log")) { openHubLog() }.dkFont(13)
+                    Button(i18n.t("settings.clear_history")) { showClearConfirm = true }.dkFont(13)
+                }
 
                 // 只读信息沉底
                 Text(i18n.t("settings.info")).dkFont(12, .semibold)
@@ -74,6 +78,12 @@ struct SettingsView: View {
         .onAppear { syncProxyOnce(); syncToolsOnce() }
         .onChange(of: model.hubStatus?.proxy) { _, _ in syncProxyOnce() }
         .onChange(of: model.hubStatus?.tools) { _, _ in syncToolsOnce() }
+        .alert(i18n.t("settings.clear_history"), isPresented: $showClearConfirm) {
+            Button(i18n.t("access.cancel"), role: .cancel) {}
+            Button(i18n.t("settings.clear_history"), role: .destructive) { Task { await model.clearHistory() } }
+        } message: {
+            Text(i18n.t("settings.clear_history_msg"))
+        }
     }
 
     // MARK: 控件
@@ -156,15 +166,29 @@ struct SettingsView: View {
         return .readonly
     }
 
+    private var sandboxVerified: Bool { model.hubStatus?.sandbox_verified ?? false }
+    // 选了写/全权但沙箱没验证 → 危险操作其实不会自动放行(GUARD-3)，UI 上警示(GUARD-2)。
+    private var needsSandboxWarning: Bool { currentTier != .readonly && !sandboxVerified }
+
+    private func tierMenuLabel(_ tier: ToolTier) -> String {
+        if tier != .readonly && !sandboxVerified {
+            return tierLabel(tier) + i18n.t("settings.tools_needs_sandbox")
+        }
+        return tierLabel(tier)
+    }
+
     private var toolsMenu: some View {
         Menu {
             ForEach(ToolTier.allCases, id: \.self) { tier in
                 Button { setTier(tier) } label: {
-                    Label(tierLabel(tier), systemImage: currentTier == tier ? "checkmark" : "")
+                    Label(tierMenuLabel(tier), systemImage: currentTier == tier ? "checkmark" : "")
                 }
             }
         } label: {
             HStack(spacing: 4) {
+                if needsSandboxWarning {
+                    Image(systemName: "lock.trianglebadge.exclamationmark").font(.caption).foregroundStyle(.orange)
+                }
                 Text(tierLabel(currentTier)).dkFont(13).foregroundStyle(tierColor(currentTier))
                 Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
             }

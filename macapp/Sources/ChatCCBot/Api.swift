@@ -93,6 +93,13 @@ enum HubApi {
         try await post("/allowlist", AllowEdit(channel: channel, id: id, action: action))
     }
 
+    struct Empty: Encodable {}
+
+    /// 清除历史：让 hub 清空内存统计（GUARD-4）。
+    static func clearStats() async throws {
+        try await post("/stats/clear", Empty())
+    }
+
     private static func post<T: Encodable>(_ path: String, _ body: T) async throws {
         guard let url = URL(string: base() + path) else { throw URLError(.badURL) }
         var req = URLRequest(url: url)

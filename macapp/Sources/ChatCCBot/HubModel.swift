@@ -90,6 +90,13 @@ final class HubModel: ObservableObject {
         await refresh()
     }
 
+    /// 清除历史：清空 hub 内存统计 + 刷新（GUARD-4）。
+    func clearHistory() async {
+        lastError = nil
+        do { try await HubApi.clearStats() } catch { lastError = "err.action_failed" }
+        await refresh()
+    }
+
     /// 每 3s 拉一次（小 loop）；视图消失时 .task 被取消，循环自然退出。
     func startPolling(every seconds: UInt64 = 3) async {
         while !Task.isCancelled {

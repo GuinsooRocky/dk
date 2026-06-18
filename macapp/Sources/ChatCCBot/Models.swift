@@ -33,6 +33,7 @@ struct HubStatus: Codable {
     var max_concurrency: Int?
     var proxy: String?
     var claude_reachable: Bool?   // 大脑可达：渠道连着也得这环通才答得了（nil=未知）
+    var sandbox_verified: Bool?   // 沙箱是否真验证(GUARD-2)：写/全权工具安全的前提
 }
 
 struct AllowlistResp: Codable {
