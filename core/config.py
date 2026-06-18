@@ -10,6 +10,7 @@ def load_env(env_path) -> None:
 
     被 supervisor 托管时（CHATCC_SUPERVISED=1）：supervisor 按 config.toml 注入的值是
     权威，.env 只补缺、不覆盖——否则旧 .env 会静默盖掉 config.toml 的设置。
+    （已解战略 §11 item3 的 .env override footgun：setdefault 让注入值优先）
     单独运行时（无 supervisor）：.env 权威，盖过 shell 已 export 的同名变量（原意图）。
     """
     p = Path(env_path)
