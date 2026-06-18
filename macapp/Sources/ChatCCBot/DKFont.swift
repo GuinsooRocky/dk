@@ -31,3 +31,13 @@ extension View {
         modifier(DKFontModifier(base: base, weight: weight))
     }
 }
+
+// 字体档 → 原生控件尺寸：macOS 的 Button/Picker 无视 .font，只能用 controlSize 整体放大。
+func dkControlSize(_ scale: CGFloat) -> ControlSize {
+    switch scale {
+    case ..<0.95: return .small
+    case ..<1.15: return .regular
+    case ..<1.35: return .large
+    default: return .extraLarge
+    }
+}

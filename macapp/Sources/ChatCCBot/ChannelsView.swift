@@ -5,6 +5,7 @@ import SwiftUI
 struct ChannelsView: View {
     @EnvironmentObject var model: HubModel
     @EnvironmentObject var i18n: I18n
+    @Environment(\.dkScale) private var scale
 
     var body: some View {
         ScrollView {
@@ -15,6 +16,7 @@ struct ChannelsView: View {
                 channelList
             }
             .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 18)
+            .controlSize(dkControlSize(scale))   // 渠道里的按钮也随字体档放大
         }
     }
 
@@ -145,45 +147,49 @@ private struct ChannelBlock: View {
     }
 
     private var childIds: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 6) {
             // 想加入（发过消息但还没放行）
             ForEach(pendingHere) { p in
-                HStack(spacing: 6) {
-                    Text("·").foregroundStyle(.secondary)
-                    Text(p.user).dkFont(12).lineLimit(1)
+                HStack(spacing: 8) {
+                    Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
                     Text(i18n.t("access.just_messaged")).dkFont(11)
                         .foregroundStyle(Color(red: 0.35, green: 0.78, blue: 0.98))
                     Spacer()
                     Button(i18n.t("access.join")) {
                         Task { await model.editAllow(row.meta.key, p.user, "add") }
-                    }.dkFont(12)
+                    }
                 }
+                .padding(.vertical, 1)
             }
-            // 已允许（中性·号，不用绿点——绿点会被误读成"连接验证通过"）
+            // 已允许：ID 中性显示（无绿点，避免误读成"连接验证通过"），长 ID 中间省略，× 移除
             ForEach(allowedHere, id: \.self) { uid in
-                HStack(spacing: 6) {
-                    Text("·").foregroundStyle(.secondary)
-                    Text(uid).dkFont(12).lineLimit(1).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text(uid).dkFont(12).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
                     Spacer()
-                    Button(i18n.t("access.remove")) {
+                    Button {
                         Task { await model.editAllow(row.meta.key, uid, "remove") }
-                    }.dkFont(12)
+                    } label: {
+                        Image(systemName: "xmark.circle.fill").dkFont(12).foregroundStyle(.tertiary)
+                    }
+                    .buttonStyle(.plain).help(i18n.t("access.remove"))
                 }
+                .padding(.vertical, 1)
             }
             if allowedHere.isEmpty && pendingHere.isEmpty {
                 Text(i18n.t("access.empty_channel")).dkFont(12).foregroundStyle(.tertiary)
             }
-            // 加人
+            // 添加 ID
             if showAdd {
                 HStack(spacing: 6) {
                     TextField(i18n.t("access.manual"), text: $newId)
-                        .textFieldStyle(.roundedBorder).focused($addFocused).dkFont(12)
+                        .textFieldStyle(.roundedBorder).focused($addFocused)
                     Button(i18n.t("access.add")) {
                         let id = newId.trimmingCharacters(in: .whitespaces)
                         guard !id.isEmpty else { return }
                         Task { await model.editAllow(row.meta.key, id, "add"); newId = ""; showAdd = false }
-                    }.dkFont(12).disabled(newId.trimmingCharacters(in: .whitespaces).isEmpty)
-                    Button(i18n.t("access.cancel")) { showAdd = false; newId = "" }.dkFont(12)
+                    }.disabled(newId.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button(i18n.t("access.cancel")) { showAdd = false; newId = "" }
                 }
             } else {
                 Button {
@@ -191,10 +197,14 @@ private struct ChannelBlock: View {
                     DispatchQueue.main.async { addFocused = true }
                 } label: {
                     Label(i18n.t("access.add_person"), systemImage: "plus")
-                }.buttonStyle(.link).dkFont(12)
+                }.buttonStyle(.link)
             }
         }
         .padding(.leading, 38)
+        .overlay(alignment: .leading) {   // 树形连接线，体现"渠道→ID"主子集
+            Rectangle().fill(Color.primary.opacity(0.10))
+                .frame(width: 1).padding(.leading, 13).padding(.vertical, 1)
+        }
     }
 
     private var subLabel: String {

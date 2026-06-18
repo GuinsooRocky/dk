@@ -20,16 +20,6 @@ struct SettingsView: View {
     private let allTools = ["Read", "Glob", "Grep", "WebFetch", "Bash", "Write", "Edit"]
     private let writeTools = ["Bash", "Write", "Edit"]
 
-    // 字体档 → 原生控件尺寸（macOS 控件无视 .font，只能用 controlSize 整体放大）
-    private var dkControlSize: ControlSize {
-        switch appState.scale {
-        case ..<0.95: return .small
-        case ..<1.15: return .regular
-        case ..<1.35: return .large
-        default: return .extraLarge
-        }
-    }
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -77,7 +67,7 @@ struct SettingsView: View {
             .padding(.top, 16)
             .padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .controlSize(dkControlSize)   // 按钮/选择器等原生控件随字体档放大（.dkFont 对它们无效）
+            .controlSize(dkControlSize(appState.scale))   // 原生控件随字体档放大（.dkFont 对它们无效）
         }
         .task {
             // 这些读取内部是阻塞式 fork 子进程(PlistBuddy/pmset)，丢后台线程，别卡主线程
