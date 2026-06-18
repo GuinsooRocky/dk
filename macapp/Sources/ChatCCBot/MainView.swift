@@ -32,13 +32,14 @@ struct MainView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .environment(\.dkScale, appState.scale)   // 字体缩放只作用内容，tab 条不变
         }
+        .environment(\.dkScale, appState.scale)   // 字体缩放作用整个 app（含顶部 tab 栏）
     }
 }
 
-// 等宽分段控件：每段固定宽度，中英文一致，不随语言/缩放跳动。
+// 等宽分段控件：每段固定宽度（中英一致），文字与宽度都跟随字体缩放。
 private struct SegTabs: View {
+    @Environment(\.dkScale) private var scale
     @Binding var selection: Int
     let titles: [String]
 
@@ -46,9 +47,9 @@ private struct SegTabs: View {
         HStack(spacing: 2) {
             ForEach(titles.indices, id: \.self) { i in
                 Text(titles[i])
-                    .font(.system(size: 13, weight: selection == i ? .semibold : .regular))
+                    .dkFont(13, selection == i ? .semibold : .regular)
                     .foregroundStyle(selection == i ? Color.primary : Color.secondary)
-                    .frame(width: 90, height: 28)
+                    .frame(width: 96 * scale, height: 30 * scale)
                     .background(
                         RoundedRectangle(cornerRadius: 7)
                             .fill(selection == i ? AnyShapeStyle(.regularMaterial) : AnyShapeStyle(Color.clear))

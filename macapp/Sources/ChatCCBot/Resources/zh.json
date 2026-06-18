@@ -95,7 +95,7 @@
   "guide.wecom_steps": "1. 企业微信管理后台建一个「智能机器人」，拿到 ID / Secret。\n2. 填进 wecom/.env。\n3. 群里 @ 机器人发一条，回「谁能用」点「加入」。\n注：企业微信是给同事/客户用的，聊不了个人微信好友。",
 
   "claude.checking": "检测中…",
-  "claude.ok": "✅ Claude 已就绪",
-  "claude.not_installed": "❌ 没找到 Claude",
-  "claude.not_logged_in": "⚠️ Claude 装了但没登录/没可用套餐"
+  "claude.ok": "Claude 已就绪",
+  "claude.not_installed": "没找到 Claude",
+  "claude.not_logged_in": "Claude 装了但没登录/没可用套餐"
 }

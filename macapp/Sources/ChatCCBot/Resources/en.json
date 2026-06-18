@@ -95,7 +95,7 @@
   "guide.wecom_steps": "1. In the WeCom admin console, create a smart bot, get its ID / Secret.\n2. Put them in wecom/.env.\n3. @ the bot in a group once, then tap Add under Who can use it.\nNote: WeCom is for coworkers/customers — it can't chat personal WeChat friends.",
 
   "claude.checking": "Checking…",
-  "claude.ok": "✅ Claude ready",
-  "claude.not_installed": "❌ Claude not found",
-  "claude.not_logged_in": "⚠️ Claude installed but not logged in / no usable plan"
+  "claude.ok": "Claude ready",
+  "claude.not_installed": "Claude not found",
+  "claude.not_logged_in": "Claude installed but not logged in / no usable plan"
 }

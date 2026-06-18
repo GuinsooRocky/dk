@@ -4,9 +4,9 @@ import SwiftUI
 // Cmd +/-/0 调它；设置里滑杆也调它。默认 1.15 = 比基准大一点。
 @MainActor
 final class AppState: ObservableObject {
-    static let minScale: CGFloat = 0.85
-    static let maxScale: CGFloat = 1.6
-    private static let prefKey = "DK.fontScale"
+    static let minScale: CGFloat = 0.8    // 80%
+    static let maxScale: CGFloat = 1.5    // 150%
+    private static let prefKey = "DK.fontScale2"   // 换 key：忽略旧 slider 时代的非整值
 
     private static let awakeKey = "DK.keepAwake"
 
@@ -36,7 +36,8 @@ final class AppState: ObservableObject {
     init() {
         persistBackground = UserDefaults.standard.bool(forKey: "DK.persistBackground")
         let saved = UserDefaults.standard.object(forKey: Self.prefKey) as? Double
-        scale = saved.map { CGFloat($0) } ?? 1.15
+        let raw = saved.map { CGFloat($0) } ?? 1.0   // 默认 100%
+        scale = min(max((raw * 10).rounded() / 10, Self.minScale), Self.maxScale)
         keepAwake = (UserDefaults.standard.object(forKey: Self.awakeKey) as? Bool) ?? true
         applyAwake()   // init 里 didSet 不触发，手动应用一次
     }
@@ -45,7 +46,8 @@ final class AppState: ObservableObject {
         keepAwake ? sleepGuard.enable() : sleepGuard.disable()
     }
 
-    func bumpUp() { scale = min(scale + 0.1, Self.maxScale) }
-    func bumpDown() { scale = max(scale - 0.1, Self.minScale) }
-    func reset() { scale = 1.15 }
+    // 对齐到 10% 网格，永远落在整十百分比（90/100/110…）
+    func bumpUp() { scale = min(((scale * 10).rounded() + 1) / 10, Self.maxScale) }
+    func bumpDown() { scale = max(((scale * 10).rounded() - 1) / 10, Self.minScale) }
+    func reset() { scale = 1.0 }
 }

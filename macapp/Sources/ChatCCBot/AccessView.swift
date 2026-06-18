@@ -27,7 +27,7 @@ struct AccessSection: View {
                         Spacer()
                         Button(i18n.t("access.join")) {
                             Task { await model.editAllow(p.channel, p.user, "add") }
-                        }
+                        }.dkFont(13)
                     }
                 }
             }
@@ -44,7 +44,7 @@ struct AccessSection: View {
                         Spacer()
                         Button(i18n.t("access.remove")) {
                             Task { await model.editAllow(item.channel, item.uid, "remove") }
-                        }
+                        }.dkFont(13)
                     }
                 }
             }
@@ -65,7 +65,8 @@ struct AccessSection: View {
                         Task { await model.editAllow(manualChannel, id, "add"); manualId = ""; showManual = false }
                     }
                     .disabled(manualId.trimmingCharacters(in: .whitespaces).isEmpty)
-                    Button(i18n.t("access.cancel")) { showManual = false; manualId = "" }
+                    .dkFont(13)
+                    Button(i18n.t("access.cancel")) { showManual = false; manualId = "" }.dkFont(13)
                 }
                 .padding(.top, 4)
             } else {
@@ -76,6 +77,7 @@ struct AccessSection: View {
                     Label(i18n.t("access.manual"), systemImage: "plus")
                 }
                 .buttonStyle(.link)
+                .dkFont(13)
                 .padding(.top, 4)
             }
         }

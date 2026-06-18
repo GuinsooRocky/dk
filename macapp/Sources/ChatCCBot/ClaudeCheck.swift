@@ -13,6 +13,15 @@ enum ClaudeReadiness {
         case .notLoggedIn: return "claude.not_logged_in"
         }
     }
+
+    var symbol: String {
+        switch self {
+        case .checking: return "circle.dashed"
+        case .ok: return "checkmark.circle.fill"
+        case .notInstalled: return "xmark.circle.fill"
+        case .notLoggedIn: return "exclamationmark.triangle.fill"
+        }
+    }
 }
 
 @MainActor

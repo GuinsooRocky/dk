@@ -48,7 +48,7 @@ struct SettingsView: View {
                     row(i18n.t("settings.disablesleep"), sub: i18n.t("settings.disablesleep_note")) { disableSleepToggle }
                 }
 
-                Button(i18n.t("settings.open_log")) { openHubLog() }
+                Button(i18n.t("settings.open_log")) { openHubLog() }.dkFont(13)
 
                 // 只读信息沉底
                 Text(i18n.t("settings.info")).dkFont(12, .semibold)
@@ -89,21 +89,35 @@ struct SettingsView: View {
 
     private var fontControl: some View {
         HStack(spacing: 6) {
-            Button { appState.bumpDown() } label: { Image(systemName: "minus") }
-                .buttonStyle(.bordered).disabled(appState.scale <= AppState.minScale + 0.001)
-            Text("\(Int((appState.scale * 100).rounded()))%").dkFont(13).monospacedDigit().frame(width: 46)
-            Button { appState.bumpUp() } label: { Image(systemName: "plus") }
-                .buttonStyle(.bordered).disabled(appState.scale >= AppState.maxScale - 0.001)
-            Button(i18n.t("settings.reset")) { appState.reset() }
+            Button { appState.bumpDown() } label: {
+                Image(systemName: "minus").dkFont(13).frame(width: 16 * appState.scale, height: 14 * appState.scale)
+            }
+            .buttonStyle(.bordered).disabled(appState.scale <= AppState.minScale + 0.001)
+            Text("\(Int((appState.scale * 100).rounded()))%")
+                .dkFont(13).monospacedDigit().lineLimit(1).fixedSize()   // 不换行
+            Button { appState.bumpUp() } label: {
+                Image(systemName: "plus").dkFont(13).frame(width: 16 * appState.scale, height: 14 * appState.scale)
+            }
+            .buttonStyle(.bordered).disabled(appState.scale >= AppState.maxScale - 0.001)
+            Button(i18n.t("settings.reset")) { appState.reset() }.dkFont(13)
         }
     }
 
     private var claudeControl: some View {
         HStack(spacing: 8) {
+            Image(systemName: claude.state.symbol).dkFont(14).foregroundStyle(claudeColor)
             Text(i18n.t(claude.state.titleKey)).dkFont(13)
-            Button(i18n.t("setup.recheck")) { Task { await claude.quickCheck() } }
-            Button(i18n.t("setup.verify_login")) { Task { await claude.verifyLogin() } }
-                .buttonStyle(.link)
+            Button(i18n.t("setup.recheck")) { Task { await claude.quickCheck() } }.dkFont(13)
+            Button(i18n.t("setup.verify_login")) { Task { await claude.verifyLogin() } }.dkFont(13)
+        }
+    }
+
+    private var claudeColor: Color {
+        switch claude.state {
+        case .ok: return .dkGreen
+        case .notInstalled: return .dkRed
+        case .notLoggedIn: return .orange
+        case .checking: return Color.secondary
         }
     }
 
@@ -130,7 +144,7 @@ struct SettingsView: View {
                 .frame(width: 84).textFieldStyle(.roundedBorder).disabled(!proxyOn)
             Button(i18n.t("settings.proxy_apply")) {
                 Task { await model.setProxy(proxyOn, port: Int(proxyPort) ?? 7897) }
-            }
+            }.dkFont(13)
             Toggle("", isOn: $proxyOn).labelsHidden().toggleStyle(DKSwitchStyle())
         }
     }

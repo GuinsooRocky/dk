@@ -13,12 +13,16 @@ extension EnvironmentValues {
     }
 }
 
+// 渲染字号 = base × 1.12(舒适基准) × scale(用户缩放，默认 1.0 = 100%)。
+// 1.12 让 100% 时就比系统默认大一点；scale 100% 即"默认"。
+private let dkBaseline: CGFloat = 1.12
+
 private struct DKFontModifier: ViewModifier {
     @Environment(\.dkScale) private var scale
     let base: CGFloat
     let weight: Font.Weight
     func body(content: Content) -> some View {
-        content.font(.system(size: base * scale, weight: weight))
+        content.font(.system(size: base * dkBaseline * scale, weight: weight))
     }
 }
 
