@@ -2,20 +2,14 @@ import SwiftUI
 
 // MARK: - 后端 /supervisor /status /stats 的数据模型（对应 hub 的 JSON）
 
+// 注：以下结构是后端 /supervisor /status /stats 的 JSON 契约镜像，
+// 部分字段(ts/stale/reason、pid/last_rc/backoff、engine、busy/last_at/last_text、at)暂未在 UI 用，保留以兼容解码。
 struct SupervisorStatus: Codable {
     var ok: Bool
     var ts: Double?
-    var hub: HubInfo?
     var channels: [ChannelStatus]?
     var stale: Bool?
     var reason: String?
-}
-
-struct HubInfo: Codable {
-    var state: String
-    var pid: Int?
-    var restarts: Int?
-    var last_error: String?
 }
 
 struct ChannelStatus: Codable, Identifiable {

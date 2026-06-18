@@ -26,9 +26,15 @@ final class AppState: ObservableObject {
         }
     }
 
+    // 后台常驻：默认关——退出 DK 时停后端；开了则退出后 bot 仍在线。
+    @Published var persistBackground: Bool {
+        didSet { UserDefaults.standard.set(persistBackground, forKey: "DK.persistBackground") }
+    }
+
     private let sleepGuard = SleepGuard()
 
     init() {
+        persistBackground = UserDefaults.standard.bool(forKey: "DK.persistBackground")
         let saved = UserDefaults.standard.object(forKey: Self.prefKey) as? Double
         scale = saved.map { CGFloat($0) } ?? 1.15
         keepAwake = (UserDefaults.standard.object(forKey: Self.awakeKey) as? Bool) ?? true

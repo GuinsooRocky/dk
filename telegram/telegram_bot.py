@@ -136,6 +136,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = str(chat.id)
         if not security.is_allowed(sender, ALLOWED):
             log.warning("拒绝非白名单(语音) from=%s", sender)
+            hub_client.report_pending("telegram", sender)   # 实时抓 ID（与文本入口一致）
             return
         voice = msg.voice or msg.audio
         if voice is None:
@@ -180,6 +181,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = str(chat.id)
         if not security.is_allowed(sender, ALLOWED):
             log.warning("拒绝非白名单(图片) from=%s", sender)
+            hub_client.report_pending("telegram", sender)   # 实时抓 ID（与文本入口一致）
             return
         photo = msg.photo[-1] if msg.photo else None   # 最后一个=最大尺寸
         if photo is None:

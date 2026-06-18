@@ -100,6 +100,9 @@ enum HubApi {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONEncoder().encode(body)
         req.timeoutInterval = 6
-        _ = try await URLSession.shared.data(for: req)
+        let (_, resp) = try await URLSession.shared.data(for: req)
+        guard let http = resp as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            throw URLError(.badServerResponse)   // 非 2xx 不再当成功（与 get() 一致）
+        }
     }
 }

@@ -98,10 +98,11 @@ def on_message(data) -> None:
         # fail-closed 白名单：在任何回复/处理之前（含非文本），未授权静默丢弃
         if not fc.is_allowed(sender_open_id):
             log.warning("拒绝非白名单 from=%s", sender_open_id)
+            fc.hub_client.report_pending("feishu", sender_open_id)   # 实时抓 ID：让 app 显示"想加入"
             return
 
         if msg.message_type != "text":
-            _reply(message_id, "暂时只支持文本消息")
+            _send(chat_id, "暂时只支持文本消息")   # 原 _reply 未定义，会抛 NameError
             return
 
         try:

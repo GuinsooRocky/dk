@@ -38,9 +38,11 @@ struct ChannelsView: View {
         HStack {
             Text(i18n.t("channels.header")).dkFont(20, .bold)
             Spacer()
-            Text(model.reachable ? i18n.t("channels.readonly_safe") : i18n.t("channels.backend_down"))
+            Text(model.lastError != nil
+                 ? i18n.t(model.lastError!)
+                 : (model.reachable ? i18n.t("channels.readonly_safe") : i18n.t("channels.backend_down")))
                 .dkFont(13)
-                .foregroundStyle(model.reachable ? Color.secondary : Color.red)
+                .foregroundStyle((model.lastError != nil || !model.reachable) ? Color.red : Color.secondary)
         }
         .padding(.bottom, 10)
     }

@@ -16,7 +16,6 @@ import time
 import json
 import asyncio
 import logging
-import threading
 from pathlib import Path
 
 # ---- 引入跨渠道 core（core/ 在仓库根目录，与 feishu-claude 同款引法）----

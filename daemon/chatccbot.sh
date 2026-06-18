@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # chat-cc-bot 的 launchd 管家：把 supervisor(hub + 各渠道) 托管成后台服务。
 #   ✅ 崩溃自愈（崩了自动拉起）   ✅ 无 Terminal 窗口   ✅ 不依赖任何终端/会话
-#   ⏸ 开机自启：默认【关】。想开 → 见下方 plist 里 RunAtLoad 的注释，改 true 后重新 install。
+#   ✅ 开机自启：默认【开】（RunAtLoad=true，登录即起、重启电脑后自动拉起）。不想要 → 改下方 plist 的 RunAtLoad 为 <false/> 再重新 install。
 #
 # 用法：./daemon/chatccbot.sh {install|start|stop|restart|status|logs|uninstall}
 set -e

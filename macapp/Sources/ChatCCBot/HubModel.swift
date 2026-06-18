@@ -11,8 +11,10 @@ final class HubModel: ObservableObject {
     @Published var reachable = false   // 后端在跑且 ok:true 才为真（诚实降级用）
     @Published var busy = false        // hub 当前在跑 claude（菜单栏图标用）
     @Published var pending: [String: Bool] = [:]   // 开关乐观态：发请求到刷新前先显示目标值
+    @Published var lastError: String?              // 最近一次写操作失败（i18n key），不再静默吞
 
     private var pollTask: Task<Void, Never>?
+    private var pendingSeq: [String: Int] = [:]    // per-name 请求序号，防并发清空别人的乐观态
 
     init() {
         // 自启 3s 轮询，脱离视图生命周期 —— 菜单栏没开窗口也能反映状态。
@@ -27,11 +29,15 @@ final class HubModel: ObservableObject {
 
     /// 点开关：乐观更新 → POST → 给 supervisor 重载时间 → 刷新真实状态。
     func setEnabled(_ name: String, _ on: Bool) async {
+        lastError = nil
+        let seq = (pendingSeq[name] ?? 0) + 1
+        pendingSeq[name] = seq
         pending[name] = on
-        try? await HubApi.setChannelEnabled(name: name, enabled: on)
+        do { try await HubApi.setChannelEnabled(name: name, enabled: on) }
+        catch { lastError = "err.action_failed" }
         try? await Task.sleep(nanoseconds: 1_800_000_000)
         await refresh()
-        pending[name] = nil
+        if pendingSeq[name] == seq { pending[name] = nil }   // 只有最新点击才清乐观态，防并发闪回
     }
 
     func isEnabled(_ name: String) -> Bool {
@@ -41,14 +47,16 @@ final class HubModel: ObservableObject {
 
     /// 改允许的工具：整体重启，多等一会。
     func setTools(_ tools: String) async {
-        try? await HubApi.setTools(tools)
+        lastError = nil
+        do { try await HubApi.setTools(tools) } catch { lastError = "err.action_failed" }
         try? await Task.sleep(nanoseconds: 7_000_000_000)
         await refresh()
     }
 
     /// 设代理端口后端整体重启较久，多等一会再刷新。
     func setProxy(_ on: Bool, port: Int) async {
-        try? await HubApi.setProxy(enabled: on, port: port)
+        lastError = nil
+        do { try await HubApi.setProxy(enabled: on, port: port) } catch { lastError = "err.action_failed" }
         try? await Task.sleep(nanoseconds: 7_000_000_000)
         await refresh()
     }
@@ -70,7 +78,9 @@ final class HubModel: ObservableObject {
 
     /// 加/移除白名单：改 .env + 重启该渠道，等一会再刷新。
     func editAllow(_ channel: String, _ id: String, _ action: String) async {
-        try? await HubApi.setAllow(channel: channel, id: id, action: action)
+        lastError = nil
+        do { try await HubApi.setAllow(channel: channel, id: id, action: action) }
+        catch { lastError = "err.action_failed" }
         try? await Task.sleep(nanoseconds: 1_800_000_000)
         await refresh()
     }

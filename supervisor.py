@@ -30,7 +30,7 @@ CONFIG = ROOT / "config.toml"
 STATUS_PATH = core_config.supervisor_status_path()
 RELOAD_PATH = core_config.reload_request_path()
 RELOAD_ALL_PATH = core_config.reload_all_request_path()
-RESTART_CHANNEL_PATH = core_config.restart_channel_request_path()
+RUNTIME_DIR = core_config.runtime_dir()
 
 
 def load_cfg() -> dict:
@@ -58,21 +58,6 @@ def _find_certifi(venv_pythons) -> str:
     return ""
 
 
-def _env_value(env_path: Path, key: str) -> str:
-    """读渠道 .env 里某 key 的值（不存在/空返回 ""）。仅判断凭证齐不齐，不外泄值。"""
-    try:
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, v = line.split("=", 1)
-            if k.strip() == key:
-                return v.strip()
-    except Exception:
-        pass
-    return ""
-
-
 def channel_meta(cfg: dict) -> list:
     """所有已知渠道（含未启用）的元信息，用于状态展示：是否启用 + 凭证是否齐。
 
@@ -80,7 +65,7 @@ def channel_meta(cfg: dict) -> list:
     凭证不齐（缺 token/secret，或白名单为空=没人能用）→ 状态 needs_setup。
     """
     def has(cfg_val, env_path, env_key):
-        return bool((cfg_val or "").strip()) or bool(_env_value(env_path, env_key))
+        return bool((cfg_val or "").strip()) or bool(core_config.read_env_value(env_path, env_key))
 
     tg = cfg.get("telegram", {})
     fs = cfg.get("feishu", {})
@@ -145,7 +130,8 @@ def build_components(cfg: dict) -> list:
             "cwd": str(ROOT / "telegram"),
             "env": {
                 "TELEGRAM_BOT_TOKEN": tg.get("token", ""),
-                "ALLOWED_USERS": tg.get("allowed_users", ""),
+                # 白名单不从 config.toml 注入：渠道启动读自己的 .env ALLOWED_USERS，
+                # 这样 app 改白名单(写 .env + 重启渠道)才生效（否则注入值会盖死 .env）
                 "TRIGGER_PREFIX": tg.get("trigger_prefix", "/c "),
                 # 代理只给 hub（跑 claude）用；Telegram 走直连（Clash 7897 到不了 Telegram）
                 "HUB_URL": hub_url, **voice_env,
@@ -160,7 +146,8 @@ def build_components(cfg: dict) -> list:
             "cwd": str(ROOT),
             "env": {
                 "FEISHU_APP_ID": fs.get("app_id", ""), "FEISHU_APP_SECRET": fs.get("app_secret", ""),
-                "ALLOWED_USERS": fs.get("allowed_users", ""), "HUB_URL": hub_url, **voice_env,
+                # 白名单走渠道 .env（见 telegram 处说明），不从 config.toml 注入
+                "HUB_URL": hub_url, **voice_env,
             },
         })
 
@@ -172,7 +159,8 @@ def build_components(cfg: dict) -> list:
             "cwd": str(ROOT),
             "env": {
                 "WECOM_BOT_ID": wc.get("bot_id", ""), "WECOM_BOT_SECRET": wc.get("bot_secret", ""),
-                "ALLOWED_USERS": wc.get("allowed_users", ""), "HUB_URL": hub_url, **voice_env,
+                # 白名单走渠道 .env（见 telegram 处说明），不从 config.toml 注入
+                "HUB_URL": hub_url, **voice_env,
             },
         })
     return comps
@@ -319,24 +307,29 @@ def main() -> None:
                 st["p"] = start(st["c"], st)
             write_status(state, metas)
             continue
-        # 单渠道重启：白名单改了 → 只重启那个渠道（它启动时重读 .env，新白名单生效）
-        if RESTART_CHANNEL_PATH.exists():
-            try:
-                name = RESTART_CHANNEL_PATH.read_text().strip()
-                RESTART_CHANNEL_PATH.unlink()
-            except Exception:
-                name = ""
-            if name in state and name != "hub":
-                print(f"[supervisor] 重启渠道 {name}（白名单变更）")
+        # 单渠道重启：白名单改了 → 重启相关渠道（它们启动时重读自己的 .env，新白名单生效）。
+        # 按 restart_channel.<name> 文件排空，避免一个 tick 内多次编辑互相覆盖丢单。
+        restart_markers = list(RUNTIME_DIR.glob("restart_channel.*"))
+        if restart_markers:
+            cfg = load_cfg()
+            metas = channel_meta(cfg)   # 刷新 metas，避免白名单状态显示持续过期
+            for mp in restart_markers:
                 try:
-                    state[name]["p"].terminate()
+                    name = mp.name.split(".", 1)[1]
+                    mp.unlink()
                 except Exception:
-                    pass
-                time.sleep(0.5)
-                state[name]["backoff"] = 1
-                state[name]["last_error"] = None
-                state[name]["p"] = start(state[name]["c"], state[name])
-                write_status(state, metas)
+                    continue
+                if name in state and name != "hub":
+                    print(f"[supervisor] 重启渠道 {name}（白名单变更）")
+                    try:
+                        state[name]["p"].terminate()
+                    except Exception:
+                        pass
+                    time.sleep(0.5)
+                    state[name]["backoff"] = 1
+                    state[name]["last_error"] = None
+                    state[name]["p"] = start(state[name]["c"], state[name])
+            write_status(state, metas)
             continue
         # 热重载：hub 改了 config.toml 会 touch reload 标记 → 起新启用 / 停新禁用的渠道（hub 不动）
         if RELOAD_PATH.exists():

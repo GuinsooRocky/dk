@@ -37,6 +37,10 @@ struct SettingsView: View {
                     div
                     row(i18n.t("settings.autostart"), sub: i18n.t("settings.autostart_sub")) { autostartToggle }
                     div
+                    row(i18n.t("settings.persist"), sub: i18n.t("settings.persist_sub")) {
+                        Toggle("", isOn: $appState.persistBackground).labelsHidden().toggleStyle(DKSwitchStyle())
+                    }
+                    div
                     row(i18n.t("settings.keepawake"), sub: i18n.t("settings.keepawake_note")) {
                         Toggle("", isOn: $appState.keepAwake).labelsHidden().toggleStyle(DKSwitchStyle())
                     }
@@ -64,12 +68,13 @@ struct SettingsView: View {
             .padding(.bottom, 18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .task { await claude.quickCheck() }
-        .onAppear {
-            autostartOn = Autostart.isOn()
-            disableSleepOn = DisableSleep.isOn()
-            syncProxyOnce(); syncToolsOnce()
+        .task {
+            // 这些读取内部是阻塞式 fork 子进程(PlistBuddy/pmset)，丢后台线程，别卡主线程
+            let (a, s) = await Task.detached { (Autostart.isOn(), DisableSleep.isOn()) }.value
+            autostartOn = a; disableSleepOn = s
+            await claude.quickCheck()
         }
+        .onAppear { syncProxyOnce(); syncToolsOnce() }
         .onChange(of: model.hubStatus?.proxy) { _, _ in syncProxyOnce() }
         .onChange(of: model.hubStatus?.tools) { _, _ in syncToolsOnce() }
     }
@@ -132,7 +137,8 @@ struct SettingsView: View {
 
     private var autostartToggle: some View {
         Toggle("", isOn: Binding(get: { autostartOn }, set: { v in
-            autostartOn = v; Autostart.set(v)
+            autostartOn = v
+            Task.detached { Autostart.set(v) }   // 阻塞式写 plist，丢后台
         })).labelsHidden().toggleStyle(DKSwitchStyle()).disabled(!Autostart.available())
     }
 

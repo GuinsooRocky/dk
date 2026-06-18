@@ -58,13 +58,10 @@ def request_reload_all() -> None:
     reload_all_request_path().write_text("1")
 
 
-def restart_channel_request_path() -> Path:
-    """单渠道重启标记（白名单改了只重启那个渠道，它启动时重读 .env 生效）。"""
-    return runtime_dir() / "restart_channel"
-
-
 def request_restart_channel(name: str) -> None:
-    restart_channel_request_path().write_text(name)
+    """单渠道重启标记：每渠道一个文件 restart_channel.<name>，避免一个 tick 内多次编辑互相覆盖丢单。
+    渠道重启时重读自己的 .env，新白名单生效。"""
+    (runtime_dir() / f"restart_channel.{name}").write_text("1")
 
 
 # 渠道 → .env 路径（白名单真实存放处）

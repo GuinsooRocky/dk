@@ -2,8 +2,21 @@ import SwiftUI
 import AppKit
 
 // DK —— 原生控制面板入口。菜单栏常驻 + 主窗口；Info.plist 设 LSUIElement=1 隐藏 Dock。
+// DK 是后端的总开关：启动拉起后端，退出停掉（除非「后台常驻」开着）。
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ note: Notification) {
+        BackendControl.start()
+    }
+    func applicationWillTerminate(_ note: Notification) {
+        if !UserDefaults.standard.bool(forKey: "DK.persistBackground") {
+            BackendControl.stop()
+        }
+    }
+}
+
 @main
 struct ChatCCBotApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = HubModel()
     @StateObject private var i18n = I18n()
     @StateObject private var appState = AppState()
