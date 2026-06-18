@@ -52,6 +52,12 @@ _STATS = {"total": 0, "ok": 0, "busy": 0, "err": 0, "by_user": {}, "last_at": 0.
 _pending_lock = threading.Lock()
 _PENDING = deque(maxlen=20)
 
+# 渠道心跳：渠道"真连着"时每 120s 上报一次（纯本地、不碰 claude）。
+# hub 据此把 supervisor 的"进程 connected"细分为真"在线" vs "连接中"（久未心跳）。
+_hb_lock = threading.Lock()
+_HEARTBEAT: dict = {}     # channel -> 最后心跳 ts
+_HB_WINDOW = 300          # 秒：超过没收到心跳 → connected 降级 connecting（容 ~2 拍）
+
 
 def _bump(field: str, user_key: str = "") -> None:
     with _stats_lock:
@@ -193,6 +199,18 @@ async def pending_report(body: PendingReport):
     return {"ok": True}
 
 
+class Heartbeat(BaseModel):
+    channel: str
+
+
+@app.post("/heartbeat")
+async def heartbeat(body: Heartbeat):
+    """渠道真连着时的心跳：只记一个时间戳，不碰 claude、不耗 token。"""
+    with _hb_lock:
+        _HEARTBEAT[body.channel] = time.time()
+    return {"ok": True}
+
+
 class AllowEdit(BaseModel):
     channel: str
     id: str
@@ -257,6 +275,13 @@ async def supervisor():
     try:
         data = json.loads(path.read_text())
         data["stale"] = (time.time() - data.get("ts", 0)) > 10
+        # 心跳叠加：进程虽 connected，但久未收到该渠道心跳 → 实为"连接中/未连上"，别假装在线
+        now = time.time()
+        with _hb_lock:
+            for ch in data.get("channels", []):
+                if ch.get("name") in ("telegram", "feishu", "wecom") and ch.get("state") == "connected":
+                    if now - _HEARTBEAT.get(ch["name"], 0) > _HB_WINDOW:
+                        ch["state"] = "connecting"
         return data
     except Exception:
         return {"ok": False, "channels": [], "reason": "supervisor 状态不可用（未经 supervisor 启动？）"}

@@ -34,6 +34,7 @@
   "state.error": "出错",
   "state.off": "未开启",
   "state.needs_setup": "待配置（没人能用）",
+  "state.connecting": "连接中",
   "state.unknown": "状态未知",
 
   "channel.telegram.name": "Telegram",

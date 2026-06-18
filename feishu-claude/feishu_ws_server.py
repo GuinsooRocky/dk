@@ -151,6 +151,7 @@ def main() -> None:
     if not fc.CFG.allowed_users:
         log.warning("⚠ ALLOWED_USERS 为空：当前拒绝所有人。先发一条消息从日志拿 open_id 填进 .env 再重启。")
     log.info("提醒：飞书后台「事件订阅」需切到「使用长连接接收事件」，否则收不到消息。")
+    fc.hub_client.start_heartbeat("feishu")   # 后台 120s 一拍，证运行循环活着（纯本地、不碰 claude）
     ws_client.start()   # 阻塞运行，内部自动重连/鉴权
 
 

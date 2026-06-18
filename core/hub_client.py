@@ -4,6 +4,7 @@
 Hub 在本机 127.0.0.1，所以 trust_env=False —— 不走系统代理（Clash 等），直连本地。
 """
 import os
+import time
 import threading
 
 import httpx
@@ -45,3 +46,28 @@ def report_pending(channel: str, sender: str) -> None:
         except Exception:
             pass
     threading.Thread(target=_send, daemon=True).start()
+
+
+def report_heartbeat(channel: str) -> None:
+    """上报一次心跳：告诉 Hub 这个渠道不只是进程活着，连接循环真在跑。fire-and-forget。"""
+    def _send():
+        try:
+            httpx.post(f"{HUB_URL}/heartbeat", json={"channel": channel},
+                       trust_env=False, timeout=3)
+        except Exception:
+            pass
+    threading.Thread(target=_send, daemon=True).start()
+
+
+def start_heartbeat(channel: str, interval: int = 120) -> None:
+    """后台线程每 interval 秒上报一次心跳。给 telegram/feishu 这种阻塞主循环用——
+    它们的 SDK 不暴露连接态，心跳=运行循环活着（已强于 supervisor 的"进程存在"）。"""
+    def _loop():
+        while True:
+            try:
+                httpx.post(f"{HUB_URL}/heartbeat", json={"channel": channel},
+                           trust_env=False, timeout=3)
+            except Exception:
+                pass
+            time.sleep(interval)
+    threading.Thread(target=_loop, daemon=True).start()

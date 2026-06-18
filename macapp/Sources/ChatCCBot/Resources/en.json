@@ -34,6 +34,7 @@
   "state.error": "Error",
   "state.off": "Off",
   "state.needs_setup": "Needs setup (nobody can use it)",
+  "state.connecting": "Connecting",
   "state.unknown": "Unknown",
 
   "channel.telegram.name": "Telegram",

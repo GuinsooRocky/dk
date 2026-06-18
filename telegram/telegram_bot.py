@@ -216,6 +216,7 @@ def main() -> None:
     if not ALLOWED:
         log.warning("⚠ ALLOWED_USERS 为空：当前拒绝所有人。")
 
+    hub_client.start_heartbeat("telegram")   # 后台 120s 一拍，证运行循环活着（纯本地、不碰 claude）
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
