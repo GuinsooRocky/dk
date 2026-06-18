@@ -41,11 +41,7 @@ struct SettingsView: View {
                         Toggle("", isOn: $appState.persistBackground).labelsHidden().toggleStyle(DKSwitchStyle())
                     }
                     div
-                    row(i18n.t("settings.keepawake"), sub: i18n.t("settings.keepawake_note")) {
-                        Toggle("", isOn: $appState.keepAwake).labelsHidden().toggleStyle(DKSwitchStyle())
-                    }
-                    div
-                    row(i18n.t("settings.disablesleep"), sub: i18n.t("settings.disablesleep_note")) { disableSleepToggle }
+                    row(i18n.t("settings.sleep"), sub: i18n.t(sleepSubKey)) { sleepMenu }
                 }
 
                 Button(i18n.t("settings.open_log")) { openHubLog() }.dkFont(13)
@@ -193,13 +189,61 @@ struct SettingsView: View {
         })).labelsHidden().toggleStyle(DKSwitchStyle()).disabled(!Autostart.available())
     }
 
-    private var disableSleepToggle: some View {
-        Toggle("", isOn: Binding(get: { disableSleepOn }, set: { v in
-            Task { @MainActor in
-                let ok = await Task.detached { DisableSleep.set(v) }.value
-                disableSleepOn = ok ? v : DisableSleep.isOn()
+    // 防休眠三档：关 / 防空闲休眠(IOKit 断言) / 合盖也不睡(pmset，需密码+散热)
+    private enum SleepLevel: CaseIterable, Hashable { case off, idle, full }
+
+    private var currentSleepLevel: SleepLevel {
+        if disableSleepOn { return .full }
+        if appState.keepAwake { return .idle }
+        return .off
+    }
+
+    private var sleepSubKey: String {
+        switch currentSleepLevel {
+        case .off:  return "settings.sleep_sub_off"
+        case .idle: return "settings.sleep_sub_idle"
+        case .full: return "settings.sleep_sub_full"
+        }
+    }
+
+    private func sleepLabel(_ lvl: SleepLevel) -> String {
+        switch lvl {
+        case .off:  return i18n.t("settings.sleep_off")
+        case .idle: return i18n.t("settings.sleep_idle")
+        case .full: return i18n.t("settings.sleep_full")
+        }
+    }
+
+    private func setSleepLevel(_ lvl: SleepLevel) {
+        switch lvl {
+        case .off:  appState.keepAwake = false; if disableSleepOn { applyDisableSleep(false) }
+        case .idle: appState.keepAwake = true;  if disableSleepOn { applyDisableSleep(false) }
+        case .full: appState.keepAwake = true;  if !disableSleepOn { applyDisableSleep(true) }
+        }
+    }
+
+    private func applyDisableSleep(_ v: Bool) {
+        Task { @MainActor in
+            let ok = await Task.detached { DisableSleep.set(v) }.value   // 阻塞 pmset，丢后台
+            disableSleepOn = ok ? v : DisableSleep.isOn()
+        }
+    }
+
+    private var sleepMenu: some View {
+        Menu {
+            ForEach(SleepLevel.allCases, id: \.self) { lvl in
+                Button { setSleepLevel(lvl) } label: {
+                    Label(sleepLabel(lvl), systemImage: currentSleepLevel == lvl ? "checkmark" : "")
+                }
             }
-        })).labelsHidden().toggleStyle(DKSwitchStyle())
+        } label: {
+            HStack(spacing: 4) {
+                Text(sleepLabel(currentSleepLevel)).dkFont(13)
+                    .foregroundStyle(currentSleepLevel == .full ? .orange : .primary)
+                Image(systemName: "chevron.up.chevron.down").font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .menuStyle(.borderlessButton).fixedSize()
     }
 
     private func setTier(_ tier: ToolTier) {
