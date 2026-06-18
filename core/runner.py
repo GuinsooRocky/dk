@@ -47,9 +47,19 @@ def run_claude(cfg, full_prompt: str, work_dir, resume_session: str = "") -> dic
     return result
 
 
+def _effective_tools(cfg) -> str:
+    """沙箱已验证 → 用配置工具；未验证 → 强制只读，剥掉 Bash/Write/Edit。GUARD-3 真正的闸。
+    （--allowedTools 一旦含危险工具就已放行，光改 permission-mode 拦不住，必须从工具清单剥。）"""
+    if sandbox.verified(cfg.claude_settings):
+        return cfg.allowed_tools
+    dangerous = {"Bash", "Write", "Edit"}
+    safe = [t.strip() for t in cfg.allowed_tools.split(",")
+            if t.strip() and t.strip() not in dangerous]
+    return ",".join(safe)
+
+
 def _permission_mode(cfg) -> str:
-    """沙箱已验证 → acceptEdits（被沙箱关住，自动放行安全）；
-    未验证 → default（不自动放行写/命令等危险操作，宁可被挡也不裸跑）。GUARD-3。"""
+    """沙箱已验证 → acceptEdits；未验证 → default。与 _effective_tools 一道做防御纵深。GUARD-3。"""
     return "acceptEdits" if sandbox.verified(cfg.claude_settings) else "default"
 
 
@@ -58,7 +68,7 @@ def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
     if resume_session:
         cmd += ["--resume", resume_session]
     cmd += [
-        "--allowedTools", cfg.allowed_tools,
+        "--allowedTools", _effective_tools(cfg),
         "--output-format", "json",
         "--permission-mode", _permission_mode(cfg),
         # 只用项目级 settings：堵住 owner 全局 ~/.claude/CLAUDE.md / RTK.md 泄漏进每个远程用户会话
@@ -109,7 +119,7 @@ def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
 
     async def _go():
         opts = ClaudeAgentOptions(
-            allowed_tools=[t.strip() for t in cfg.allowed_tools.split(",") if t.strip()],
+            allowed_tools=[t.strip() for t in _effective_tools(cfg).split(",") if t.strip()],
             permission_mode=_permission_mode(cfg),
             cwd=str(work_dir),
             resume=resume_session or None,

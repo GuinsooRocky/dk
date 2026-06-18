@@ -89,7 +89,7 @@
   "a11y.fontsize_up": "Increase font size",
   "a11y.menubar": "DK status",
   "settings.tools_needs_sandbox": " (needs sandbox)",
-  "settings.tools_sandbox_warn": "⚠️ Sandbox unverified: write/run won't auto-run; set up the sandbox per SANDBOX.md first",
+  "settings.tools_sandbox_warn": "⚠️ Sandbox unverified: auto-downgraded to read-only (write/run disabled); set up the sandbox per SANDBOX.md to enable",
   "settings.clear_history": "Clear history",
   "settings.clear_history_msg": "Clears Insights stats and recent-message data (in memory). Diagnostic logs are untouched.",
   "settings.language": "Language",

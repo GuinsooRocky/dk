@@ -89,7 +89,7 @@
   "a11y.fontsize_up": "放大字体",
   "a11y.menubar": "DK 状态",
   "settings.tools_needs_sandbox": "（需沙箱）",
-  "settings.tools_sandbox_warn": "⚠️ 沙箱未验证：写/运行命令不会自动放行，先按 SANDBOX.md 配置沙箱",
+  "settings.tools_sandbox_warn": "⚠️ 沙箱未验证：已自动降级为只读（写/运行命令禁用），先按 SANDBOX.md 配置沙箱才放行",
   "settings.clear_history": "清除历史",
   "settings.clear_history_msg": "清空菜单栏「用量」里的统计与最近消息记录（内存数据）。诊断日志不动。",
   "settings.language": "语言",
