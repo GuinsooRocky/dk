@@ -58,6 +58,37 @@ _hb_lock = threading.Lock()
 _HEARTBEAT: dict = {}     # channel -> 最后心跳 ts
 _HB_WINDOW = 300          # 秒：超过没收到心跳 → connected 降级 connecting（容 ~2 拍）
 
+# claude"大脑"可达：渠道连着 ≠ 发消息答得了（还要 claude 这环通）。
+# 判定靠两路便宜信号：① 真实 /chat 成败（免费）② 60s 一次 0-token 连通性探测（不跑 claude）。
+_brain_lock = threading.Lock()
+_BRAIN = {"reachable": None, "ts": 0.0}   # True 可达 / False 不可达 / None 未知
+
+
+def _mark_brain(reachable: bool) -> None:
+    with _brain_lock:
+        _BRAIN["reachable"] = reachable
+        _BRAIN["ts"] = time.time()
+
+
+def _probe_brain_loop() -> None:
+    """每 60s 探一次能否连到 Anthropic API（走 hub 的代理 env，0 token、不跑 claude、不需 key）。
+    任何 HTTP 响应(含 401)=可达；连接拒绝/超时=不可达。"""
+    import urllib.request
+    import urllib.error
+    while True:
+        try:
+            req = urllib.request.Request("https://api.anthropic.com/v1/models", method="HEAD")
+            urllib.request.urlopen(req, timeout=8)
+            _mark_brain(True)
+        except urllib.error.HTTPError:
+            _mark_brain(True)          # 401/404 等 = 服务器答了 = 路通
+        except Exception:
+            _mark_brain(False)         # 连不上（代理断/网络断）
+        time.sleep(60)
+
+
+threading.Thread(target=_probe_brain_loop, daemon=True).start()
+
 
 def _bump(field: str, user_key: str = "") -> None:
     with _stats_lock:
@@ -108,6 +139,10 @@ async def chat(body: ChatIn):
             None, runner.run_claude, CFG, prompt, work_dir, resume
         )
         SESSIONS.update(key, result, was_resume=bool(resume))
+        if result["ok"]:
+            _mark_brain(True)              # 真答出来了 = 大脑可达（最真的信号）
+        elif result.get("api_unreachable"):
+            _mark_brain(False)             # claude 连不上 API（代理断/网络断）
         _bump("ok" if result["ok"] else "err")
         with _stats_lock:
             _STATS["last_text"] = body.text[:120]
@@ -138,6 +173,7 @@ async def status():
         "tools": CFG.allowed_tools,
         "max_concurrency": CFG.max_concurrency,
         "proxy": _current_proxy(),
+        "claude_reachable": _BRAIN["reachable"],   # 大脑可达：渠道连着也得这环通才答得了
     }
 
 

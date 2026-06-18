@@ -17,6 +17,7 @@
   "channels.restarts": "重启 %d 次",
   "channels.wechat_unavailable": "暂不可用",
   "err.action_failed": "操作失败，请重试",
+  "brain.offline": "⚠️ Claude 大脑离线——渠道连着，但现在发消息答不了（多半代理/网络断了）",
 
   "access.title": "渠道 ID 配置",
   "access.pending": "想加入的人",

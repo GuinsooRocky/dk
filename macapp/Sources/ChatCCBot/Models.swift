@@ -32,6 +32,7 @@ struct HubStatus: Codable {
     var tools: String?
     var max_concurrency: Int?
     var proxy: String?
+    var claude_reachable: Bool?   // 大脑可达：渠道连着也得这环通才答得了（nil=未知）
 }
 
 struct AllowlistResp: Codable {

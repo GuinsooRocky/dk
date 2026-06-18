@@ -17,6 +17,7 @@
   "channels.restarts": "restarted %d×",
   "channels.wechat_unavailable": "Unavailable",
   "err.action_failed": "Action failed, please retry",
+  "brain.offline": "⚠️ Claude offline — channels connected but messages can't be answered now (likely proxy/network down)",
 
   "access.title": "Channel ID config",
   "access.pending": "Wants to join",

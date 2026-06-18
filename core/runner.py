@@ -72,9 +72,14 @@ def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
 
     if proc.returncode != 0:
         log.warning("claude 非零退出 rc=%s stderr=%s", proc.returncode, proc.stderr[:1500])
+        blob = (proc.stdout or "") + (proc.stderr or "")
         # 区分"续接的会话真没了" vs 一般失败：前者要开新会话重试，后者保留会话下轮重试
-        gone = bool(resume_session) and "No conversation found" in (proc.stderr or "")
-        return {"ok": False, "text": "处理出错了，稍后再试。", "session_id": "", "session_gone": gone}
+        gone = bool(resume_session) and "No conversation found" in blob
+        # 连不上 claude API（代理断/网络断）→ 喂给 hub 的"大脑可达"判定
+        unreachable = ("Unable to connect to API" in blob or "ConnectionRefused" in blob
+                       or "Connection refused" in blob)
+        return {"ok": False, "text": "处理出错了，稍后再试。", "session_id": "",
+                "session_gone": gone, "api_unreachable": unreachable}
 
     # rc==0 即成功；即便 stdout 偶发非 JSON 也不当失败、不误删会话
     try:

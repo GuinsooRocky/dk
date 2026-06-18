@@ -9,6 +9,7 @@ struct ChannelsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 header
+                brainBanner
                 VStack(spacing: 0) {
                     ForEach(Array(model.channelRows.enumerated()), id: \.element.id) { idx, row in
                         if idx > 0 { separator }
@@ -24,6 +25,20 @@ struct ChannelsView: View {
             .padding(.horizontal, 18)
             .padding(.top, 14)
             .padding(.bottom, 18)
+        }
+    }
+
+    // 大脑离线提示：渠道连着 ≠ 答得了。claude API 连不上时红条警告，消除"绿=能用"的歧义。
+    @ViewBuilder private var brainBanner: some View {
+        if model.hubStatus?.claude_reachable == false {
+            HStack(spacing: 8) {
+                Image(systemName: "brain.head.profile").foregroundStyle(.red)
+                Text(i18n.t("brain.offline")).dkFont(13).foregroundStyle(.red)
+                Spacer()
+            }
+            .padding(.vertical, 8).padding(.horizontal, 10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.10)))
+            .padding(.bottom, 8)
         }
     }
 
