@@ -38,7 +38,7 @@ struct SettingsView: View {
                     row(i18n.t("settings.autostart"), sub: i18n.t("settings.autostart_sub")) { autostartToggle }
                     div
                     row(i18n.t("settings.persist"), sub: i18n.t("settings.persist_sub")) {
-                        Toggle("", isOn: $appState.persistBackground).labelsHidden().toggleStyle(DKSwitchStyle())
+                        Toggle(i18n.t("settings.persist"), isOn: $appState.persistBackground).labelsHidden().toggleStyle(DKSwitchStyle())
                     }
                     div
                     row(i18n.t("settings.sleep"), sub: i18n.t(sleepSubKey)) { sleepMenu }
@@ -90,12 +90,14 @@ struct SettingsView: View {
                 Image(systemName: "minus").dkFont(13).frame(width: 16 * appState.scale, height: 14 * appState.scale)
             }
             .buttonStyle(.bordered).disabled(appState.scale <= AppState.minScale + 0.001)
+            .accessibilityLabel(i18n.t("a11y.fontsize_down"))
             Text("\(Int((appState.scale * 100).rounded()))%")
                 .dkFont(13).monospacedDigit().lineLimit(1).fixedSize()   // 不换行
             Button { appState.bumpUp() } label: {
                 Image(systemName: "plus").dkFont(13).frame(width: 16 * appState.scale, height: 14 * appState.scale)
             }
             .buttonStyle(.bordered).disabled(appState.scale >= AppState.maxScale - 0.001)
+            .accessibilityLabel(i18n.t("a11y.fontsize_up"))
             Button(i18n.t("settings.reset")) { appState.reset() }.dkFont(13)
         }
     }
@@ -178,12 +180,12 @@ struct SettingsView: View {
             Button(i18n.t("settings.proxy_apply")) {
                 Task { await model.setProxy(proxyOn, port: Int(proxyPort) ?? 7897) }
             }.dkFont(13)
-            Toggle("", isOn: $proxyOn).labelsHidden().toggleStyle(DKSwitchStyle())
+            Toggle(i18n.t("settings.proxy"), isOn: $proxyOn).labelsHidden().toggleStyle(DKSwitchStyle())
         }
     }
 
     private var autostartToggle: some View {
-        Toggle("", isOn: Binding(get: { autostartOn }, set: { v in
+        Toggle(i18n.t("settings.autostart"), isOn: Binding(get: { autostartOn }, set: { v in
             autostartOn = v
             Task.detached { Autostart.set(v) }   // 阻塞式写 plist，丢后台
         })).labelsHidden().toggleStyle(DKSwitchStyle()).disabled(!Autostart.available())
@@ -269,7 +271,7 @@ struct SettingsView: View {
                 HStack(spacing: DKSpace.xs) {
                     Text(title).dkFont(14, .medium)
                     if let help {
-                        Image(systemName: "questionmark.circle").foregroundStyle(.secondary).help(help)
+                        Image(systemName: "questionmark.circle").foregroundStyle(.secondary).help(help).accessibilityLabel(help)
                     }
                 }
                 if let sub { Text(sub).dkFont(12).foregroundStyle(.secondary) }

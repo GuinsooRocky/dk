@@ -49,7 +49,7 @@ struct ChatCCBotApp: App {
                 .environmentObject(model)
                 .environmentObject(i18n)
         } label: {
-            Image(systemName: model.menuSymbol)
+            Image(systemName: model.menuSymbol).accessibilityLabel(i18n.t("a11y.menubar"))
         }
         .menuBarExtraStyle(.window)   // 自控样式：彩色状态点 + 不置灰
     }

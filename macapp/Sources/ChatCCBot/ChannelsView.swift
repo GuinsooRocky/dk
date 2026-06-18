@@ -140,7 +140,7 @@ private struct ChannelBlock: View {
                     }
                 }
                 Spacer()
-                Toggle("", isOn: Binding(
+                Toggle(i18n.t(row.meta.nameKey), isOn: Binding(
                     get: { model.isEnabled(row.meta.key) },
                     set: { v in Task { await model.setEnabled(row.meta.key, v) } }
                 ))
@@ -215,7 +215,7 @@ private struct ChannelBlock: View {
             } label: {
                 Image(systemName: "xmark").dkFont(10).foregroundStyle(.secondary).dkHit(22)
             }
-            .buttonStyle(.plain).help(i18n.t("access.remove"))
+            .buttonStyle(.plain).help(i18n.t("access.remove")).accessibilityLabel(i18n.t("access.remove"))
         }
         .padding(.horizontal, DKSpace.md).padding(.vertical, DKSpace.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
