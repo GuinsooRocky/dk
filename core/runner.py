@@ -10,6 +10,8 @@ import logging
 import threading
 import subprocess
 
+from core import sandbox
+
 log = logging.getLogger("runner")
 
 
@@ -45,6 +47,12 @@ def run_claude(cfg, full_prompt: str, work_dir, resume_session: str = "") -> dic
     return result
 
 
+def _permission_mode(cfg) -> str:
+    """沙箱已验证 → acceptEdits（被沙箱关住，自动放行安全）；
+    未验证 → default（不自动放行写/命令等危险操作，宁可被挡也不裸跑）。GUARD-3。"""
+    return "acceptEdits" if sandbox.verified(cfg.claude_settings) else "default"
+
+
 def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
     cmd = [cfg.claude_cmd, "-p", full_prompt]
     if resume_session:
@@ -52,7 +60,7 @@ def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
     cmd += [
         "--allowedTools", cfg.allowed_tools,
         "--output-format", "json",
-        "--permission-mode", "acceptEdits",
+        "--permission-mode", _permission_mode(cfg),
         # 只用项目级 settings：堵住 owner 全局 ~/.claude/CLAUDE.md / RTK.md 泄漏进每个远程用户会话
         "--setting-sources", "project",
     ]
@@ -102,7 +110,7 @@ def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
     async def _go():
         opts = ClaudeAgentOptions(
             allowed_tools=[t.strip() for t in cfg.allowed_tools.split(",") if t.strip()],
-            permission_mode="acceptEdits",
+            permission_mode=_permission_mode(cfg),
             cwd=str(work_dir),
             resume=resume_session or None,
             settings=cfg.claude_settings or None,
