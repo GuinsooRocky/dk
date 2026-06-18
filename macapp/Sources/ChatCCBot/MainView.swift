@@ -12,7 +12,6 @@ struct MainView: View {
             HStack {
                 Spacer()
                 SegTabs(selection: $tab, titles: [
-                    i18n.t("tab.insights"),
                     i18n.t("tab.channels"),
                     i18n.t("tab.settings"),
                     i18n.t("tab.setup"),
@@ -25,9 +24,8 @@ struct MainView: View {
 
             Group {
                 switch tab {
-                case 0: InsightsView()
-                case 1: ChannelsView()
-                case 2: SettingsView()
+                case 0: ChannelsView()
+                case 1: SettingsView()
                 default: OnboardingView()
                 }
             }

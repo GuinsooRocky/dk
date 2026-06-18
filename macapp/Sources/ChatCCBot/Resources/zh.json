@@ -18,7 +18,8 @@
   "channels.restarts": "重启 %d 次",
   "channels.wechat_unavailable": "暂不可用",
   "err.action_failed": "操作失败，请重试",
-  "brain.offline": "⚠️ 后端连不上 Claude——渠道连着，但发消息答不了。多半是代理(7897)没开；claude 直连能通的话，去设置关掉代理即可",
+  "brain.offline_proxy": "发消息答不了——代理 7897 没通。去设置关掉代理，或把 Clash 开起来",
+  "brain.offline_direct": "发消息答不了——连不上 Claude。去设置里开代理试试",
 
   "access.title": "渠道 ID 配置",
   "access.pending": "想加入的人",
@@ -27,6 +28,8 @@
   "access.remove": "移除",
   "access.just_messaged": "刚发了消息",
   "access.manual": "手动添加 ID",
+  "access.add_person": "加人",
+  "access.empty_channel": "还没人能用",
   "access.add": "添加",
   "access.cancel": "取消",
   "access.empty": "还没有人被允许（没人能用）",

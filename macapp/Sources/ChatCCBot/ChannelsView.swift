@@ -1,52 +1,21 @@
 import SwiftUI
 
-// Channels tab：渠道列表 + 微信禁用信息行（战略 §5.2 / §6）。
+// 渠道面板（主子集）：用量摘要 + 各渠道，每个渠道下挂自己的「谁能用」ID。
+// 合并了原「用量」tab 和独立的「渠道 ID 配置」段——渠道与 ID 本就是主子集关系。
 struct ChannelsView: View {
     @EnvironmentObject var model: HubModel
     @EnvironmentObject var i18n: I18n
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
                 header
                 brainBanner
-                VStack(spacing: 0) {
-                    ForEach(Array(model.channelRows.enumerated()), id: \.element.id) { idx, row in
-                        if idx > 0 { separator }
-                        ChannelRowView(row: row)
-                    }
-                    separator
-                    weChatRow
-                }
-
-                Divider().padding(.top, 18).padding(.bottom, 12)
-                AccessSection()
+                usageCard
+                channelList
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 14)
-            .padding(.bottom, 18)
+            .padding(.horizontal, 18).padding(.top, 14).padding(.bottom, 18)
         }
-    }
-
-    // 大脑离线提示：渠道连着 ≠ 答得了。claude API 连不上时红条警告，消除"绿=能用"的歧义。
-    @ViewBuilder private var brainBanner: some View {
-        if model.hubStatus?.claude_reachable == false {
-            HStack(spacing: 8) {
-                Image(systemName: "brain.head.profile").foregroundStyle(.red)
-                Text(i18n.t("brain.offline")).dkFont(13).foregroundStyle(.red)
-                Spacer()
-            }
-            .padding(.vertical, 8).padding(.horizontal, 10)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.10)))
-            .padding(.bottom, 8)
-        }
-    }
-
-    private var separator: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.06))
-            .frame(height: 0.5)
-            .padding(.leading, 36)
     }
 
     private var header: some View {
@@ -59,7 +28,70 @@ struct ChannelsView: View {
                 .dkFont(13)
                 .foregroundStyle((model.lastError != nil || !model.reachable) ? Color.red : Color.secondary)
         }
-        .padding(.bottom, 10)
+    }
+
+    // 大脑离线：真诊断（看代理配没配），不猜
+    @ViewBuilder private var brainBanner: some View {
+        if model.hubStatus?.claude_reachable == false {
+            let proxied = !(model.hubStatus?.proxy ?? "").isEmpty
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                Text(i18n.t(proxied ? "brain.offline_proxy" : "brain.offline_direct"))
+                    .dkFont(13).foregroundStyle(.red)
+                Spacer()
+            }
+            .padding(.vertical, 8).padding(.horizontal, 10)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.red.opacity(0.10)))
+        }
+    }
+
+    // 用量摘要（合并自原用量 tab，紧凑一卡）
+    private var usageCard: some View {
+        let s = model.stats
+        let up = model.hubStatus?.uptime_sec ?? 0
+        return HStack(spacing: 22) {
+            usageMetric("\(s?.total ?? 0)", i18n.t("insights.total_label"))
+            usageMetric(uptimeStr(up), i18n.t("insights.uptime_label"))
+            Spacer()
+            HStack(spacing: 6) {
+                usagePill(.dkGreen, i18n.t("insights.ok", s?.ok ?? 0))
+                usagePill(.dkRed, i18n.t("insights.err", s?.err ?? 0))
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .dkCard()
+    }
+
+    private func usageMetric(_ v: String, _ label: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(v).dkFont(20, .bold).monospacedDigit()
+            Text(label).dkFont(11).foregroundStyle(.secondary)
+        }
+    }
+
+    private func usagePill(_ c: Color, _ t: String) -> some View {
+        HStack(spacing: 4) {
+            Circle().fill(c).frame(width: 6, height: 6)
+            Text(t).dkFont(12)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 3).background(c.opacity(0.14), in: Capsule())
+    }
+
+    private func uptimeStr(_ sec: Int) -> String {
+        if sec < 60 { return i18n.t("insights.just_started") }
+        if sec >= 3600 { return "\(sec / 3600)h\(sec % 3600 / 60)m" }
+        return "\(sec / 60)m"
+    }
+
+    private var channelList: some View {
+        VStack(spacing: 0) {
+            ForEach(model.channelRows) { row in
+                ChannelBlock(row: row)
+                DKHairline().padding(.leading, 38)
+            }
+            weChatRow
+        }
     }
 
     private var weChatRow: some View {
@@ -72,40 +104,97 @@ struct ChannelsView: View {
             Spacer()
             Text(i18n.t("channels.wechat_unavailable")).dkFont(13).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 12)
-        .opacity(0.55)
+        .padding(.vertical, 12).opacity(0.55)
     }
 }
 
-private struct ChannelRowView: View {
+// 单个渠道块：主行（图标·名·状态·开关）+ 子集（这个渠道下「谁能用」的 ID）。
+private struct ChannelBlock: View {
     @EnvironmentObject var model: HubModel
     @EnvironmentObject var i18n: I18n
     let row: ChannelDisplay
+    @State private var showAdd = false
+    @State private var newId = ""
+    @FocusState private var addFocused: Bool
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: row.meta.symbol).font(.title3).frame(width: 26)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(i18n.t(row.meta.nameKey)).dkFont(14, .medium)
-                HStack(spacing: 6) {
-                    Text(row.state.glyph).foregroundStyle(row.state.color)
-                    Text(subLabel).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 12) {
+                Image(systemName: row.meta.symbol).font(.title3).frame(width: 26)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(i18n.t(row.meta.nameKey)).dkFont(14, .medium)
+                    HStack(spacing: 6) {
+                        Text(row.state.glyph).foregroundStyle(row.state.color)
+                        Text(subLabel).foregroundStyle(.secondary)
+                    }.dkFont(13)
+                    if let err = row.status?.last_error, !err.isEmpty {
+                        Text(err).dkFont(12).foregroundStyle(.red).lineLimit(2)
+                    }
                 }
-                .dkFont(13)
-                if let err = row.status?.last_error, !err.isEmpty {
-                    Text(err).dkFont(12).foregroundStyle(.red).lineLimit(2)
-                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { model.isEnabled(row.meta.key) },
+                    set: { v in Task { await model.setEnabled(row.meta.key, v) } }
+                ))
+                .labelsHidden().toggleStyle(DKSwitchStyle()).disabled(!model.reachable)
             }
-            Spacer()
-            Toggle("", isOn: Binding(
-                get: { model.isEnabled(row.meta.key) },
-                set: { newVal in Task { await model.setEnabled(row.meta.key, newVal) } }
-            ))
-            .labelsHidden()
-            .toggleStyle(DKSwitchStyle())
-            .disabled(!model.reachable)
+
+            childIds   // 子集：这个渠道下的 ID（缩进，主子集关系）
         }
         .padding(.vertical, 12)
+    }
+
+    private var childIds: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            // 想加入（发过消息但还没放行）
+            ForEach(pendingHere) { p in
+                HStack(spacing: 6) {
+                    Text("·").foregroundStyle(.secondary)
+                    Text(p.user).dkFont(12).lineLimit(1)
+                    Text(i18n.t("access.just_messaged")).dkFont(11)
+                        .foregroundStyle(Color(red: 0.35, green: 0.78, blue: 0.98))
+                    Spacer()
+                    Button(i18n.t("access.join")) {
+                        Task { await model.editAllow(row.meta.key, p.user, "add") }
+                    }.dkFont(12)
+                }
+            }
+            // 已允许（中性·号，不用绿点——绿点会被误读成"连接验证通过"）
+            ForEach(allowedHere, id: \.self) { uid in
+                HStack(spacing: 6) {
+                    Text("·").foregroundStyle(.secondary)
+                    Text(uid).dkFont(12).lineLimit(1).foregroundStyle(.secondary)
+                    Spacer()
+                    Button(i18n.t("access.remove")) {
+                        Task { await model.editAllow(row.meta.key, uid, "remove") }
+                    }.dkFont(12)
+                }
+            }
+            if allowedHere.isEmpty && pendingHere.isEmpty {
+                Text(i18n.t("access.empty_channel")).dkFont(12).foregroundStyle(.tertiary)
+            }
+            // 加人
+            if showAdd {
+                HStack(spacing: 6) {
+                    TextField(i18n.t("access.manual"), text: $newId)
+                        .textFieldStyle(.roundedBorder).focused($addFocused).dkFont(12)
+                    Button(i18n.t("access.add")) {
+                        let id = newId.trimmingCharacters(in: .whitespaces)
+                        guard !id.isEmpty else { return }
+                        Task { await model.editAllow(row.meta.key, id, "add"); newId = ""; showAdd = false }
+                    }.dkFont(12).disabled(newId.trimmingCharacters(in: .whitespaces).isEmpty)
+                    Button(i18n.t("access.cancel")) { showAdd = false; newId = "" }.dkFont(12)
+                }
+            } else {
+                Button {
+                    showAdd = true
+                    DispatchQueue.main.async { addFocused = true }
+                } label: {
+                    Label(i18n.t("access.add_person"), systemImage: "plus")
+                }.buttonStyle(.link).dkFont(12)
+            }
+        }
+        .padding(.leading, 38)
     }
 
     private var subLabel: String {
@@ -113,5 +202,10 @@ private struct ChannelRowView: View {
         if let r = row.status?.restarts, r > 0 { parts.append(i18n.t("channels.restarts", r)) }
         parts.append(i18n.t(row.meta.noteKey))
         return parts.joined(separator: " · ")
+    }
+
+    private var allowedHere: [String] { model.allowlist?.channels[row.meta.key] ?? [] }
+    private var pendingHere: [PendingItem] {
+        (model.allowlist?.pending ?? []).filter { $0.channel == row.meta.key }
     }
 }
