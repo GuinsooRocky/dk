@@ -20,7 +20,7 @@ from pathlib import Path
 
 # ---- 引入跨渠道 core（core/ 在仓库根目录，与 feishu-claude 同款引法）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, security, dedup, chunking, hub_client  # noqa: E402
+from core import config, security, dedup, chunking, hub_client, replies  # noqa: E402
 
 from wecom_aibot_sdk import WSClient, WSClientOptions  # noqa: E402
 
@@ -100,18 +100,21 @@ def _process(reply, sender: str, chat_id: str, text: str) -> None:
     不自己跑 claude（做菜在 Hub）；在线程池里跑（同步 HTTP），reply 回调把协程调度回事件循环。"""
     if not security.is_allowed(sender, CFG.allowed_users):
         return
+    if text.strip() in ("/start", "/help"):
+        reply(replies.HELP)
+        return
     log.info("转发 from=%s chat=%s text=%r", sender, chat_id, text[:80])
-    reply("思考中…")
+    reply(replies.THINKING)
     try:
         resp = hub_client.ask_hub_sync("wecom", chat_id, sender, text)
     except Exception as e:
         log.exception("调 Hub 失败")
         try:
-            reply("服务没连上，稍后再试。")
+            reply(replies.SERVICE_DOWN)
         except Exception:
             pass
         return
-    answer = resp.get("text") or "（没收到回复）"
+    answer = resp.get("text") or replies.NO_REPLY
     chunks = chunking.split_chunks(answer, MAX_WECOM_MSG)
     for i, c in enumerate(chunks, 1):
         reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")

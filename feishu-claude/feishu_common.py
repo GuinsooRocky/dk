@@ -15,7 +15,7 @@ from urllib import request as urlreq
 
 # ---- 引入跨渠道 core（core/ 在仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, security, dedup, chunking, hub_client  # noqa: E402
+from core import config, security, dedup, chunking, hub_client, replies  # noqa: E402
 
 # ---- 加载 .env + 配置 ----
 config.load_env(Path(__file__).parent / ".env")
@@ -128,18 +128,21 @@ def process(reply, sender: str, chat_id: str, text: str) -> None:
     if not is_allowed(sender):
         hub_client.report_pending("feishu", sender)   # 实时抓 ID：上报让 app 显示"想加入"
         return
+    if text.strip() in ("/start", "/help"):
+        reply(replies.HELP)
+        return
     log.info("转发 from=%s chat=%s text=%r", sender, chat_id, text[:80])
-    reply("思考中…")
+    reply(replies.THINKING)
     try:
         resp = hub_client.ask_hub_sync("feishu", chat_id, sender, text)
     except Exception as e:
         log.exception("调 Hub 失败")
         try:
-            reply("服务没连上，稍后再试。")
+            reply(replies.SERVICE_DOWN)
         except Exception:
             pass
         return
-    answer = resp.get("text") or "（没收到回复）"
+    answer = resp.get("text") or replies.NO_REPLY
     chunks = chunking.split_chunks(answer, MAX_FEISHU_MSG)
     for i, c in enumerate(chunks, 1):
         reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
