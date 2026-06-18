@@ -71,20 +71,22 @@ def _mark_brain(reachable: bool) -> None:
 
 
 def _probe_brain_loop() -> None:
-    """每 60s 探一次能否连到 Anthropic API（走 hub 的代理 env，0 token、不跑 claude、不需 key）。
-    任何 HTTP 响应(含 401)=可达；连接拒绝/超时=不可达。"""
-    import urllib.request
-    import urllib.error
+    """每 3 分钟用真实 `claude -p ok` 探一次（同 bot 的 env/代理设置，20s 超时快速失败，
+    --no-session-persistence 不留 jsonl）。这是唯一准的信号——订阅版 claude 不走
+    api.anthropic.com，探那个端点会误判。成本极小（几 token / 3min）。"""
+    import subprocess
     while True:
         try:
-            req = urllib.request.Request("https://api.anthropic.com/v1/models", method="HEAD")
-            urllib.request.urlopen(req, timeout=8)
-            _mark_brain(True)
-        except urllib.error.HTTPError:
-            _mark_brain(True)          # 401/404 等 = 服务器答了 = 路通
+            proc = subprocess.run(
+                [CFG.claude_cmd, "-p", "ok", "--output-format", "json", "--no-session-persistence"],
+                capture_output=True, text=True, timeout=20,
+            )
+            _mark_brain(proc.returncode == 0)     # rc0=答出来了；非0/连不上=False
+        except subprocess.TimeoutExpired:
+            _mark_brain(False)                    # 20s 还答不出 = 现在答不了
         except Exception:
-            _mark_brain(False)         # 连不上（代理断/网络断）
-        time.sleep(60)
+            pass
+        time.sleep(180)
 
 
 threading.Thread(target=_probe_brain_loop, daemon=True).start()
