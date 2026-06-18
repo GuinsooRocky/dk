@@ -4,8 +4,10 @@ import SwiftUI
 // Cmd +/-/0 调它；设置里滑杆也调它。默认 1.15 = 比基准大一点。
 @MainActor
 final class AppState: ObservableObject {
+    // DK 有意不跟随系统 Dynamic Type，改提供 app 内等价缩放（Cmd +/- / 设置）。
+    // 弱视常需 ≥200%：要提 maxScale 须先验证 680×520 主窗在该档下不溢出/截断，故暂守 150%。
     static let minScale: CGFloat = 0.8    // 80%
-    static let maxScale: CGFloat = 1.5    // 150%
+    static let maxScale: CGFloat = 1.5    // 150%（提上限前需做布局回归，见上）
     private static let prefKey = "DK.fontScale2"   // 换 key：忽略旧 slider 时代的非整值
 
     private static let awakeKey = "DK.keepAwake"
