@@ -6,8 +6,11 @@
 两者都吃同一个 Config，返回同一个结构 {ok, text, session_id}。
 """
 import json
+import logging
 import threading
 import subprocess
+
+log = logging.getLogger("runner")
 
 
 # ---- 单飞闸：默认 1，满了非阻塞返回 False（调用方回"稍等"）----
@@ -22,24 +25,7 @@ class Slots:
         self._sem.release()
 
 
-# ---- 会话复用：按 key 存上一轮 session_id，实现多轮记忆 ----
-class Sessions:
-    def __init__(self):
-        self._d: dict = {}
-        self._lock = threading.Lock()
-
-    def get(self, key: str) -> str:
-        with self._lock:
-            return self._d.get(key, "")
-
-    def update(self, key: str, result: dict, was_resume: bool) -> None:
-        """成功拿到 session_id 就存；仅在"真失败(not ok)且本轮在续接"时清掉失效会话。
-        rc=0 但解析失败(ok=True 无 session_id)不算失败，保留旧会话避免误删多轮记忆。"""
-        with self._lock:
-            if result.get("session_id"):
-                self._d[key] = result["session_id"]
-            elif was_resume and not result.get("ok"):
-                self._d.pop(key, None)
+# 会话复用搬到 core/threads.py（SQLite 落盘，重启不失忆）；这里只留 claude 执行。
 
 
 def safe_user(user: str) -> str:
@@ -47,10 +33,16 @@ def safe_user(user: str) -> str:
 
 
 def run_claude(cfg, full_prompt: str, work_dir, resume_session: str = "") -> dict:
-    """跑一次 claude，返回 {ok, text, session_id}。resume_session 非空则续上一轮会话。"""
-    if cfg.engine == "sdk":
-        return _run_sdk(cfg, full_prompt, work_dir, resume_session)
-    return _run_cli(cfg, full_prompt, work_dir, resume_session)
+    """跑一次 claude，返回 {ok, text, session_id}。resume_session 非空则续上一轮会话。
+    若续接的会话已失效（claude 报 session not found），原消息立刻开新会话重试一次——
+    用户当轮就拿到答案、不静默失忆；带 reset_notice 让 hub 告知"已开新会话"。"""
+    fn = _run_sdk if cfg.engine == "sdk" else _run_cli
+    result = fn(cfg, full_prompt, work_dir, resume_session)
+    if resume_session and result.get("session_gone"):
+        log.info("会话 %s… 已失效，开新会话重试本条", resume_session[:8])
+        result = fn(cfg, full_prompt, work_dir, "")
+        result["reset_notice"] = True
+    return result
 
 
 def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
@@ -61,6 +53,8 @@ def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
         "--allowedTools", cfg.allowed_tools,
         "--output-format", "json",
         "--permission-mode", "acceptEdits",
+        # 只用项目级 settings：堵住 owner 全局 ~/.claude/CLAUDE.md / RTK.md 泄漏进每个远程用户会话
+        "--setting-sources", "project",
     ]
     if cfg.claude_settings:
         cmd += ["--settings", cfg.claude_settings]   # 套用 sandbox 隔离（见 SANDBOX.md）
@@ -71,20 +65,24 @@ def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
             capture_output=True, text=True, timeout=cfg.timeout,
         )
     except subprocess.TimeoutExpired:
-        return {"ok": False, "text": f"任务超过 {cfg.timeout} 秒，已中断。", "session_id": ""}
+        return {"ok": False, "text": f"处理太久超时了（超过 {cfg.timeout} 秒），这条先停了。", "session_id": ""}
     except FileNotFoundError:
-        return {"ok": False, "text": f"找不到 claude 命令（CLAUDE_CMD={cfg.claude_cmd}）", "session_id": ""}
+        log.error("找不到 claude 命令 CLAUDE_CMD=%s", cfg.claude_cmd)
+        return {"ok": False, "text": "服务还没准备好，稍后再试。", "session_id": ""}
 
     if proc.returncode != 0:
-        return {"ok": False, "text": f"Claude 出错：\n{proc.stderr[:1500]}", "session_id": ""}
+        log.warning("claude 非零退出 rc=%s stderr=%s", proc.returncode, proc.stderr[:1500])
+        # 区分"续接的会话真没了" vs 一般失败：前者要开新会话重试，后者保留会话下轮重试
+        gone = bool(resume_session) and "No conversation found" in (proc.stderr or "")
+        return {"ok": False, "text": "处理出错了，稍后再试。", "session_id": "", "session_gone": gone}
 
     # rc==0 即成功；即便 stdout 偶发非 JSON 也不当失败、不误删会话
     try:
         data = json.loads(proc.stdout)
         text = (data.get("result") or data.get("text") or proc.stdout).strip()
-        return {"ok": True, "text": text or "(Claude 没返回内容)", "session_id": data.get("session_id", "")}
+        return {"ok": True, "text": text or "（这次没返回内容）", "session_id": data.get("session_id", "")}
     except json.JSONDecodeError:
-        return {"ok": True, "text": proc.stdout.strip() or "(Claude 没返回内容)", "session_id": ""}
+        return {"ok": True, "text": proc.stdout.strip() or "（这次没返回内容）", "session_id": ""}
 
 
 def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
@@ -93,7 +91,8 @@ def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
     try:
         from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
     except ImportError:
-        return {"ok": False, "text": "未安装 claude-agent-sdk（pip install claude-agent-sdk）", "session_id": ""}
+        log.error("未安装 claude-agent-sdk（pip install claude-agent-sdk）")
+        return {"ok": False, "text": "服务还没准备好，稍后再试。", "session_id": ""}
 
     async def _go():
         opts = ClaudeAgentOptions(
@@ -109,9 +108,10 @@ def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
                 text = (msg.result or "").strip()
                 sid = msg.session_id or ""
                 is_err = bool(msg.is_error)
-        return {"ok": not is_err, "text": text or "(Claude 没返回内容)", "session_id": sid}
+        return {"ok": not is_err, "text": text or "（这次没返回内容）", "session_id": sid}
 
     try:
         return asyncio.run(_go())
     except Exception as e:
-        return {"ok": False, "text": f"Claude SDK 出错：{e}", "session_id": ""}
+        log.warning("claude-agent-sdk 出错：%s", e)
+        return {"ok": False, "text": "处理出错了，稍后再试。", "session_id": ""}

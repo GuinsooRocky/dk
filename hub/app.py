@@ -21,7 +21,7 @@ import uvicorn
 
 # ---- 复用跨渠道 core（仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, runner  # noqa: E402
+from core import config, runner, threads  # noqa: E402
 
 config.load_env(Path(__file__).parent / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
@@ -41,7 +41,7 @@ log = logging.getLogger("hub")
 
 # ---- 全局共享运行时（跨所有渠道唯一一份 = 真·全局单飞）----
 SLOTS = runner.Slots(CFG.max_concurrency)
-SESSIONS = runner.Sessions()
+SESSIONS = threads.Registry()   # SQLite 落盘，hub 重启不失忆
 
 # ---- 轻量统计（给菜单栏 /stats 用，内存即可）----
 _STARTED_AT = time.time()
@@ -105,7 +105,10 @@ async def chat(body: ChatIn):
         _bump("ok" if result["ok"] else "err")
         with _stats_lock:
             _STATS["last_text"] = body.text[:120]
-        return {"ok": result["ok"], "text": result["text"]}
+        text = result["text"]
+        if result.get("reset_notice"):
+            text = "（上次对话的上下文似乎丢了，已为你开新会话继续）\n\n" + text
+        return {"ok": result["ok"], "text": text}
     finally:
         SLOTS.release()
 
