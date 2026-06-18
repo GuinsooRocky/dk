@@ -1,5 +1,5 @@
 {
-  "app.open": "打开 DK…",
+  "app.open": "打开 DK",
   "app.quit": "退出",
 
   "tab.setup": "说明",
@@ -17,7 +17,7 @@
   "channels.restarts": "重启 %d 次",
   "channels.wechat_unavailable": "暂不可用",
   "err.action_failed": "操作失败，请重试",
-  "brain.offline": "⚠️ Claude 大脑离线——渠道连着，但现在发消息答不了（多半代理/网络断了）",
+  "brain.offline": "⚠️ 后端连不上 Claude——渠道连着，但发消息答不了。多半是代理(7897)没开；claude 直连能通的话，去设置关掉代理即可",
 
   "access.title": "渠道 ID 配置",
   "access.pending": "想加入的人",

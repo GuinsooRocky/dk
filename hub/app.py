@@ -113,6 +113,12 @@ class ChatIn(BaseModel):
 async def chat(body: ChatIn):
     """渠道壳/你 curl 的统一入口。全局单飞：忙时直接回 busy，不排队（个人规模够用）。"""
     user_key = f"{body.channel}:{body.user}"
+    # 大脑已知不可达 → 立刻明确失败，别让用户对着"思考中"干等 claude 内部重试 ~170s
+    with _brain_lock:
+        brain_down = _BRAIN["reachable"] is False
+    if brain_down:
+        _bump("err", user_key)
+        return {"ok": False, "text": "🔌 现在连不上 Claude（多半代理或网络断了），稍后再发。"}
     if not SLOTS.acquire():
         _bump("busy")
         return {"ok": False, "busy": True, "text": "⏳ 正在处理上一条，等它完成再发。"}

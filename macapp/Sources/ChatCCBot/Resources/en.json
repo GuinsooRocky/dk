@@ -1,5 +1,5 @@
 {
-  "app.open": "Open DK…",
+  "app.open": "Open DK",
   "app.quit": "Quit",
 
   "tab.setup": "Guide",
@@ -17,7 +17,7 @@
   "channels.restarts": "restarted %d×",
   "channels.wechat_unavailable": "Unavailable",
   "err.action_failed": "Action failed, please retry",
-  "brain.offline": "⚠️ Claude offline — channels connected but messages can't be answered now (likely proxy/network down)",
+  "brain.offline": "⚠️ Backend can't reach Claude — channels connected but messages can't be answered. Likely the proxy (7897) is off; if Claude works directly, turn the proxy off in Settings",
 
   "access.title": "Channel ID config",
   "access.pending": "Wants to join",
