@@ -9,6 +9,7 @@
 import os
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import lark_oapi as lark
 from lark_oapi.event.dispatcher_handler import EventDispatcherHandler
@@ -25,6 +26,11 @@ log = logging.getLogger("feishu")
 GROUP_REQUIRE_MENTION = os.getenv("GROUP_REQUIRE_MENTION", "false").strip().lower() in ("1", "true", "yes")
 
 _client = lark.Client.builder().app_id(fc.APP_ID).app_secret(fc.APP_SECRET).build()
+
+# 处理线程池：lark WS 回调跑在事件分发线程上，fc.process 内 ask_hub_sync 会阻塞最长 320s，
+# 同步跑会冻住 SDK 的收消息/心跳循环（且心跳线程仍上报"在线"→ 假在线）。卸到有界线程池，
+# 回调立即返回。Hub 全局单飞，多余任务到 Hub 会秒回 busy，故小池足够。
+_POOL = ThreadPoolExecutor(max_workers=4, thread_name_prefix="feishu-proc")
 
 
 def _send(chat_id: str, text: str) -> str:
@@ -48,8 +54,8 @@ def _send(chat_id: str, text: str) -> str:
     return resp.data.message_id if resp.data else ""
 
 
-def _update(message_id: str, text: str) -> None:
-    """原地编辑机器人自己发的文本消息（"思考中"→答案，不留废消息）。"""
+def _update(message_id: str, text: str) -> bool:
+    """原地编辑机器人自己发的文本消息（"思考中"→答案，不留废消息）。返回是否成功。"""
     req = (
         UpdateMessageRequest.builder()
         .message_id(message_id)
@@ -64,6 +70,8 @@ def _update(message_id: str, text: str) -> None:
     resp = _client.im.v1.message.update(req)
     if not resp.success():
         log.error("update 失败 code=%s msg=%s", resp.code, resp.msg)
+        return False
+    return True
 
 
 def on_message(data) -> None:
@@ -123,12 +131,15 @@ def on_message(data) -> None:
                 state["first"] = False
                 state["mid"] = _send(chat_id, t)
             elif state["mid"]:
-                _update(state["mid"], t)
+                # 编辑占位失败 → 退回新发一条，别把答案丢在没人改的"思考中"占位上
+                if not _update(state["mid"], t):
+                    _send(chat_id, t)
                 state["mid"] = None
             else:
                 _send(chat_id, t)
 
-        fc.process(reply, sender_open_id, chat_id, text)
+        # 卸到线程池：别在 SDK 事件循环线程里同步等 320s（见 _POOL 说明）
+        _POOL.submit(fc.process, reply, sender_open_id, chat_id, text)
     except Exception:
         log.exception("WS 处理事件出错")
 

@@ -76,16 +76,21 @@ def _probe_brain_loop() -> None:
     api.anthropic.com，探那个端点会误判。成本极小（几 token / 3min）。"""
     import subprocess
     while True:
-        try:
-            proc = subprocess.run(
-                [CFG.claude_cmd, "-p", "ok", "--output-format", "json", "--no-session-persistence"],
-                capture_output=True, text=True, timeout=20,
-            )
-            _mark_brain(proc.returncode == 0)     # rc0=答出来了；非0/连不上=False
-        except subprocess.TimeoutExpired:
-            _mark_brain(False)                    # 20s 还答不出 = 现在答不了
-        except Exception:
-            pass
+        # 占住单飞槽再探，别和真实 /chat 同时各起一个 claude（破坏"全局唯一一份 claude"）。
+        # busy 说明有 /chat 在跑 = 大脑正被真实使用，跳过这轮探测即可。
+        if SLOTS.acquire():
+            try:
+                proc = subprocess.run(
+                    [CFG.claude_cmd, "-p", "ok", "--output-format", "json", "--no-session-persistence"],
+                    capture_output=True, text=True, timeout=20,
+                )
+                _mark_brain(proc.returncode == 0)     # rc0=答出来了；非0/连不上=False
+            except subprocess.TimeoutExpired:
+                _mark_brain(False)                    # 20s 还答不出 = 现在答不了
+            except Exception:
+                pass
+            finally:
+                SLOTS.release()
         time.sleep(180)
 
 
@@ -325,7 +330,12 @@ async def supervisor():
         with _hb_lock:
             for ch in data.get("channels", []):
                 if ch.get("name") in ("telegram", "feishu", "wecom") and ch.get("state") == "connected":
-                    if now - _HEARTBEAT.get(ch["name"], 0) > _HB_WINDOW:
+                    last = _HEARTBEAT.get(ch["name"], 0)
+                    # hub 刚重启时 _HEARTBEAT 是空的（进程内存），还没收到首拍心跳。
+                    # 给一个宽限期，别把实际在线的渠道误降级成 connecting。
+                    if last == 0 and (now - _STARTED_AT) < _HB_WINDOW:
+                        continue
+                    if now - last > _HB_WINDOW:
                         ch["state"] = "connecting"
         return data
     except Exception:

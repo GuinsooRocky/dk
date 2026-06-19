@@ -26,11 +26,14 @@ log = logging.getLogger("feishu")
 def decrypt_payload(encrypted_b64: str) -> dict:
     """AES-256-CBC，key = SHA256(encrypt_key)，IV = 密文前 16 字节。"""
     from Crypto.Cipher import AES
+    from Crypto.Util.Padding import unpad
     key = hashlib.sha256(fc.ENCRYPT_KEY.encode("utf-8")).digest()
     cipher_bytes = b64decode(encrypted_b64)
     iv, ct = cipher_bytes[:16], cipher_bytes[16:]
     raw = AES.new(key, AES.MODE_CBC, iv).decrypt(ct)
-    plain = raw[:-raw[-1]]   # 去 PKCS7 padding
+    # 带校验地去 PKCS7 padding：原来 raw[:-raw[-1]] 不校验，末字节为 0 时切成空串、
+    # 损坏密文也悄悄产出乱七八糟结果（潜在 padding oracle）。unpad 非法填充直接抛 ValueError。
+    plain = unpad(raw, AES.block_size)
     return json.loads(plain.decode("utf-8"))
 
 
@@ -70,17 +73,20 @@ def event():
     else:
         payload = raw
 
-    if payload.get("type") == "url_verification":
-        log.info("URL 验证 challenge=%s", payload.get("challenge", ""))
-        return jsonify({"challenge": payload.get("challenge", "")})
-
+    # 先校 token 再做任何回应（含 url_verification challenge）：否则公网暴露下任何人
+    # POST 都能拿 challenge 回显探测端点。token 位置：url_verification 在顶层、加密事件在 header。
     header = payload.get("header", {})
     if fc.VERIFY_TOKEN:
-        if not hmac.compare_digest(header.get("token", ""), fc.VERIFY_TOKEN):
+        tok = payload.get("token") or header.get("token", "")
+        if not hmac.compare_digest(tok, fc.VERIFY_TOKEN):
             log.warning("verify token 不匹配，忽略")
             return jsonify({"code": 1, "msg": "bad token"}), 403
     else:
         log.warning("未配置 FEISHU_VERIFY_TOKEN，webhook 缺少鉴权层（建议在 .env 配上）")
+
+    if payload.get("type") == "url_verification":
+        log.info("URL 验证 challenge=%s", payload.get("challenge", ""))
+        return jsonify({"challenge": payload.get("challenge", "")})
 
     if header.get("event_type") != "im.message.receive_v1":
         return jsonify({"code": 0})

@@ -86,10 +86,18 @@ def read_env_value(env_path, key: str) -> str:
                 continue
             k, v = line.split("=", 1)
             if k.strip() == key:
-                return v.strip()
+                return _unquote(v.strip())
     except Exception:
         pass
     return ""
+
+
+def _unquote(v: str) -> str:
+    """去掉一对包裹引号（'..' 或 ".."）。dotenv 常见写法 ALLOWED_USERS="1,2"，
+    不去引号会让 split(",") 出来的首尾元素带引号，白名单比对失败误拒合法用户。"""
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in ("'", '"'):
+        return v[1:-1]
+    return v
 
 
 def read_allowlist(channel: str) -> list:
@@ -120,26 +128,37 @@ def write_allowlist(channel: str, ids) -> bool:
     return True
 
 
+def _toml_str(v: str) -> str:
+    """把任意值转义成安全的 TOML 基本字符串字面量（含两端引号）。
+
+    不转义就直接拼进双引号 → 值里的引号/换行可闭合字符串再注入任意 TOML 键
+    （如 [claude].cmd 换成恶意命令）。来源是无鉴权的本机 /config/* 端点，必须转义。"""
+    v = (v.replace("\\", "\\\\").replace('"', '\\"')
+          .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t"))
+    return f'"{v}"'
+
+
 def set_claude_tools(config_path, tools: str) -> bool:
     """写 config.toml [claude].tools（允许的工具，逗号分隔）。保留排版。"""
     p = Path(config_path)
     if not p.exists():
         return False
+    val = f"tools = {_toml_str(tools)}"
     lines, out, in_claude, done = p.read_text().splitlines(), [], False, False
     for line in lines:
         s = line.strip()
         if s.startswith("["):
             if in_claude and not done:
-                out.append(f'tools = "{tools}"'); done = True
+                out.append(val); done = True
             in_claude = (s == "[claude]")
             out.append(line)
             continue
         if in_claude and not done and s.lstrip("#").strip().startswith("tools"):
-            out.append(f'tools = "{tools}"'); done = True
+            out.append(val); done = True
             continue
         out.append(line)
     if in_claude and not done:
-        out.append(f'tools = "{tools}"')
+        out.append(val)
     p.write_text("\n".join(out) + "\n")
     return True
 
@@ -150,23 +169,24 @@ def set_proxy_url(config_path, url: str) -> bool:
     if not p.exists():
         return False
     lines = p.read_text().splitlines()
+    val = f"url = {_toml_str(url)}" if url else '# url = ""'
     out, in_proxy, done = [], False, False
     for line in lines:
         s = line.strip()
         if s.startswith("["):
             if in_proxy and not done:                       # 离开 [proxy] 仍没写 → 补一行
-                out.append(f'url = "{url}"' if url else '# url = ""')
+                out.append(val)
                 done = True
             in_proxy = (s == "[proxy]")
             out.append(line)
             continue
         if in_proxy and not done and s.lstrip("#").strip().startswith("url"):
-            out.append(f'url = "{url}"' if url else '# url = ""')
+            out.append(val)
             done = True
             continue
         out.append(line)
     if in_proxy and not done:                               # [proxy] 是最后一段
-        out.append(f'url = "{url}"' if url else '# url = ""')
+        out.append(val)
     p.write_text("\n".join(out) + "\n")
     return True
 

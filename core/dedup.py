@@ -20,3 +20,11 @@ class Dedup:
             while len(self._seen) > self._max:
                 self._seen.popitem(last=False)
             return False
+
+    def discard(self, key: str) -> None:
+        """撤销一次 seen 记账。处理过程中途失败时调用，让平台重投的同一条能再被处理，
+        而不是因已记账被永久判重吞掉。"""
+        if not key:
+            return
+        with self._lock:
+            self._seen.pop(key, None)

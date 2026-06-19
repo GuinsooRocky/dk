@@ -52,9 +52,18 @@ def _effective_tools(cfg) -> str:
     （--allowedTools 一旦含危险工具就已放行，光改 permission-mode 拦不住，必须从工具清单剥。）"""
     if sandbox.verified(cfg.claude_settings):
         return cfg.allowed_tools
-    dangerous = {"Bash", "Write", "Edit"}
-    safe = [t.strip() for t in cfg.allowed_tools.split(",")
-            if t.strip() and t.strip() not in dangerous]
+    dangerous = {"bash", "write", "edit"}
+    safe = []
+    for t in cfg.allowed_tools.split(","):
+        t = t.strip()
+        if not t:
+            continue
+        # 归一化：剥掉带参数规格 `Bash(git:*)` 的括号、统一小写，否则 `Bash(*)`/`bash`
+        # 这类变体会绕过精确匹配，危险工具照样进子进程（GUARD-3 主闸的缺口）。
+        base = t.split("(", 1)[0].strip().lower()
+        if base in dangerous:
+            continue
+        safe.append(t)
     return ",".join(safe)
 
 
@@ -124,6 +133,9 @@ def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str) -> dict:
             cwd=str(work_dir),
             resume=resume_session or None,
             settings=cfg.claude_settings or None,
+            # 与 CLI 路径对齐：只用项目级 settings，堵住 owner 全局 ~/.claude/CLAUDE.md /
+            # RTK.md 泄漏进每个远程用户会话（SDK 默认 None=加载全部源）。
+            setting_sources=["project"],
         )
         text, sid, is_err = "", "", False
         async for msg in query(prompt=full_prompt, options=opts):

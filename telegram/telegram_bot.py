@@ -92,22 +92,27 @@ async def _respond(context, chat_id: str, sender: str, text: str, heard: str = "
     chunks = chunking.split_chunks(answer, MAX_TG_MSG)
     for i, c in enumerate(chunks, 1):
         body = c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}"
-        if i == 1:
-            await context.bot.edit_message_text(
-                text=body, chat_id=chat_id, message_id=placeholder.message_id
-            )
-        else:
-            await context.bot.send_message(chat_id=chat_id, text=body)
-            await asyncio.sleep(0.5)
+        try:   # 单段失败不中断后续段（否则已发半条+剩余永久丢）
+            if i == 1:
+                await context.bot.edit_message_text(
+                    text=body, chat_id=chat_id, message_id=placeholder.message_id
+                )
+            else:
+                await context.bot.send_message(chat_id=chat_id, text=body)
+                await asyncio.sleep(0.5)
+        except Exception:
+            log.exception("发送第 %d/%d 段失败，继续发后续段", i, len(chunks))
     log.info("回复完成 from=%s len=%d", sender, len(answer))
 
 
 async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    dedup_key = ""
     try:
         if not _should_handle(update):
             return
         msg = update.effective_message
-        if DEDUP.seen(f"{update.effective_chat.id}:{msg.message_id}"):
+        dedup_key = f"{update.effective_chat.id}:{msg.message_id}"
+        if DEDUP.seen(dedup_key):
             return
         sender = str(update.effective_user.id) if update.effective_user else "anon"
         chat_id = str(update.effective_chat.id)
@@ -124,16 +129,19 @@ async def on_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         await _respond(context, chat_id, sender, text)
     except Exception:
         log.exception("on_message 处理出错")
+        DEDUP.discard(dedup_key)   # 处理异常→撤销记账，允许平台重投同条重试，不被永久判重吞掉
 
 
 async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """语音消息：下载 → 本地 SenseVoice 转写 → 当文本走 Hub。私聊才接（群语音难判触发）。"""
+    dedup_key = ""
     try:
         msg = update.effective_message
         chat = update.effective_chat
         if msg is None or chat is None or chat.type != "private":
             return
-        if DEDUP.seen(f"{chat.id}:{msg.message_id}"):
+        dedup_key = f"{chat.id}:{msg.message_id}"
+        if DEDUP.seen(dedup_key):
             return
         sender = str(update.effective_user.id) if update.effective_user else "anon"
         chat_id = str(chat.id)
@@ -165,6 +173,7 @@ async def on_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await _respond(context, chat_id, sender, text, heard=text)
     except Exception:
         log.exception("on_voice 处理出错")
+        DEDUP.discard(dedup_key)   # 处理异常→撤销记账，允许重投重试
 
 
 # 图片落盘目录（claude 用 Read 读这里的图；答完即删）
@@ -173,12 +182,14 @@ _IMG_DIR = Path(os.getenv("CLAUDE_WORK_DIR", str(Path.home() / "claude-telegram-
 
 async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """图片消息：下载最大尺寸 → 传路径给 Hub → claude Read 读图分析。私聊才接。"""
+    dedup_key = ""
     try:
         msg = update.effective_message
         chat = update.effective_chat
         if msg is None or chat is None or chat.type != "private":
             return
-        if DEDUP.seen(f"{chat.id}:{msg.message_id}"):
+        dedup_key = f"{chat.id}:{msg.message_id}"
+        if DEDUP.seen(dedup_key):
             return
         sender = str(update.effective_user.id) if update.effective_user else "anon"
         chat_id = str(chat.id)
@@ -203,6 +214,7 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
                 pass
     except Exception:
         log.exception("on_photo 处理出错")
+        DEDUP.discard(dedup_key)   # 处理异常→撤销记账，允许重投重试
 
 
 def main() -> None:

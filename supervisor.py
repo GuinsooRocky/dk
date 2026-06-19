@@ -58,6 +58,40 @@ def _find_certifi(venv_pythons) -> str:
     return ""
 
 
+def _stop(p, kill_after: float = 5.0) -> None:
+    """停一个子进程及其整个进程组（hub 会 fork claude 孙进程，只 terminate 父进程会留孤儿），
+    超时未退再 SIGKILL，并 wait 回收避免僵尸/端口未释放。"""
+    if p is None:
+        return
+    try:
+        os.killpg(os.getpgid(p.pid), signal.SIGTERM)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            p.terminate()
+        except Exception:
+            pass
+    try:
+        p.wait(timeout=kill_after)
+    except Exception:
+        try:
+            os.killpg(os.getpgid(p.pid), signal.SIGKILL)
+        except Exception:
+            try:
+                p.kill()
+            except Exception:
+                pass
+        try:
+            p.wait(timeout=2)
+        except Exception:
+            pass
+
+
+def _new_state(c: dict) -> dict:
+    """单渠道/进程的运行时状态。restart_at：>0 表示已死、待到点重启（非阻塞退避）。"""
+    return {"c": c, "p": None, "backoff": 1, "last_rc": None, "restarts": 0,
+            "last_error": None, "restart_at": 0.0, "stderr_tail": deque(maxlen=12)}
+
+
 def channel_meta(cfg: dict) -> list:
     """所有已知渠道（含未启用）的元信息，用于状态展示：是否启用 + 凭证是否齐。
 
@@ -250,17 +284,14 @@ def main() -> None:
         p = subprocess.Popen(
             c["cmd"], cwd=c["cwd"], env={**base, **inject},
             stderr=subprocess.PIPE, text=True, bufsize=1,
+            start_new_session=True,   # 独立进程组：停止时能连 hub fork 出的 claude 孙进程一起收
         )
         st["stderr_tail"].clear()
         threading.Thread(target=_pump_stderr, args=(p, st), daemon=True).start()
         print(f"[supervisor] 起 {c['name']} pid={p.pid}")
         return p
 
-    state = {
-        c["name"]: {"c": c, "p": None, "backoff": 1, "last_rc": None,
-                    "restarts": 0, "last_error": None, "stderr_tail": deque(maxlen=12)}
-        for c in comps
-    }
+    state = {c["name"]: _new_state(c) for c in comps}
     for st in state.values():
         st["p"] = start(st["c"], st)
     print(f"[supervisor] 共 {len(comps)} 个进程在跑：{', '.join(state)}。Ctrl+C 全停。")
@@ -269,10 +300,7 @@ def main() -> None:
     def shutdown(*_):
         print("\n[supervisor] 收到退出信号，停所有子进程…")
         for st in state.values():
-            try:
-                st["p"].terminate()
-            except Exception:
-                pass
+            _stop(st["p"])   # 连进程组一起停并 wait 回收，别留孤儿/占端口
         try:
             STATUS_PATH.unlink()  # 退出即抹掉状态文件，避免 hub 读到陈旧"在线"
         except Exception:
@@ -294,15 +322,9 @@ def main() -> None:
             cfg = load_cfg()
             metas = channel_meta(cfg)
             for st in state.values():
-                try:
-                    st["p"].terminate()
-                except Exception:
-                    pass
-            time.sleep(1.5)  # 等端口/连接释放
+                _stop(st["p"])   # 连进程组一起停并 wait，确保端口/连接释放后再起新的
             comps = build_components(cfg)
-            state = {c["name"]: {"c": c, "p": None, "backoff": 1, "last_rc": None,
-                                 "restarts": 0, "last_error": None, "stderr_tail": deque(maxlen=12)}
-                     for c in comps}
+            state = {c["name"]: _new_state(c) for c in comps}
             for st in state.values():
                 st["p"] = start(st["c"], st)
             write_status(state, metas)
@@ -321,12 +343,9 @@ def main() -> None:
                     continue
                 if name in state and name != "hub":
                     print(f"[supervisor] 重启渠道 {name}（白名单变更）")
-                    try:
-                        state[name]["p"].terminate()
-                    except Exception:
-                        pass
-                    time.sleep(0.5)
+                    _stop(state[name]["p"])
                     state[name]["backoff"] = 1
+                    state[name]["restart_at"] = 0.0
                     state[name]["last_error"] = None
                     state[name]["p"] = start(state[name]["c"], state[name])
             write_status(state, metas)
@@ -343,36 +362,38 @@ def main() -> None:
             for name in list(state):
                 if name not in new_comps:   # 被禁用（hub 永远在 new_comps 里）
                     print(f"[supervisor] 渠道 {name} 被禁用，停掉")
-                    try:
-                        state[name]["p"].terminate()
-                    except Exception:
-                        pass
+                    _stop(state[name]["p"])
                     del state[name]
             for name, c in new_comps.items():
                 if name not in state:       # 被启用
                     print(f"[supervisor] 渠道 {name} 被启用，起")
-                    st = {"c": c, "p": None, "backoff": 1, "last_rc": None,
-                          "restarts": 0, "last_error": None, "stderr_tail": deque(maxlen=12)}
+                    st = _new_state(c)
                     st["p"] = start(c, st)
                     state[name] = st
             write_status(state, metas)
+        now = time.monotonic()
         for name, st in state.items():
-            if st["p"].poll() is not None:
+            if st["p"].poll() is None:
+                # 活着：稳定运行则重置退避（restart_at==0 表示不在待重启态）
+                if st["restart_at"] == 0.0 and st["backoff"] != 1:
+                    st["backoff"] = 1
+                    st["last_error"] = None  # 恢复了就清掉旧错误，状态回到 connected
+                continue
+            # 已退出。restart_at==0 → 刚发现，登记错误并按退避排定重启时刻（不在循环里 sleep，
+            # 否则一个 flapping 渠道会把全局监控/热重载卡死最多 30s）
+            if st["restart_at"] == 0.0:
                 rc = st["p"].returncode
                 st["last_rc"] = rc
                 st["restarts"] += 1
                 if rc not in (0, None):
-                    # 崩溃：拿 stderr 尾巴最近一条非空行当 last_error
                     st["last_error"] = next((ln for ln in reversed(st["stderr_tail"]) if ln), None)
                 print(f"[supervisor] {name} 退出(rc={rc})，{st['backoff']}s 后重启")
-                write_status(state, metas)  # 先把"error"刷出去，别等退避结束才可见
-                time.sleep(st["backoff"])
+                st["restart_at"] = now + st["backoff"]
+                write_status(state, metas)  # 先把"error"刷出去，别等退避到点才可见
+            elif now >= st["restart_at"]:
+                st["restart_at"] = 0.0
                 st["backoff"] = min(st["backoff"] * 2, 30)
                 st["p"] = start(st["c"], st)
-            else:
-                if st["backoff"] != 1:
-                    st["backoff"] = 1  # 稳定运行则重置退避
-                    st["last_error"] = None  # 恢复了就清掉旧错误，状态回到 connected
         write_status(state, metas)
 
 

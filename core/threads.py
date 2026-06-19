@@ -33,7 +33,13 @@ class Registry:
 
     def _conn(self):
         # 每次新连接 → 线程安全（sqlite 连接不可跨线程共享）；个人规模这点开销无所谓
-        return sqlite3.connect(str(_DB_PATH), timeout=5)
+        c = sqlite3.connect(str(_DB_PATH), timeout=5)
+        # WAL：读不阻塞写、写不阻塞读，避免并发时 5s busy timeout 到点抛 OperationalError
+        try:
+            c.execute("PRAGMA journal_mode=WAL")
+        except sqlite3.OperationalError:
+            pass
+        return c
 
     def get(self, key: str) -> str:
         with self._lock:

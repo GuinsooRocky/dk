@@ -117,7 +117,10 @@ def _process(reply, sender: str, chat_id: str, text: str) -> None:
     answer = resp.get("text") or replies.NO_REPLY
     chunks = chunking.split_chunks(answer, MAX_WECOM_MSG)
     for i, c in enumerate(chunks, 1):
-        reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
+        try:   # 单段失败不中断后续段（否则已发半条+剩余永久丢，且 dedup 已记账不重投）
+            reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
+        except Exception:
+            log.exception("发送第 %d/%d 段失败，继续发后续段", i, len(chunks))
         if len(chunks) > 1:
             time.sleep(0.5)
     log.info("回复完成 from=%s len=%d", sender, len(answer))
