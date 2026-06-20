@@ -46,6 +46,14 @@ cat > "$APP/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 
+echo "[2.5/4] 打包并塞入 Python sidecar（hub+四渠道，A1）"
+bash ../build_sidecar.sh
+rm -rf "$APP/Contents/Resources/dk_sidecar"
+cp -R ../build/dist/dk_sidecar "$APP/Contents/Resources/dk_sidecar"
+# 嵌套二进制先内向外 ad-hoc 签（全是 code，可 --deep；不碰主 .app 的 i18n data bundle）
+codesign --force --deep --sign - "$APP/Contents/Resources/dk_sidecar"
+echo "  + 已塞入 sidecar（$(du -sh "$APP/Contents/Resources/dk_sidecar" | cut -f1)）"
+
 echo "[3/4] ad-hoc 签名"
 # 不用 --deep：资源 bundle 是数据不是代码，--deep 会误当代码 bundle 签名报错；
 # 主 bundle 签名会把 Resources/ 一并封装校验。

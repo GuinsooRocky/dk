@@ -39,3 +39,6 @@ macapp/dist/
 
 # ===== macOS =====
 .DS_Store
+
+# A1 sidecar 打包产物（PyInstaller venv/stage/dist）
+/build/
