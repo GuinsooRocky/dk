@@ -13,13 +13,60 @@ runtime_dir()/notify_routes.json，行：{session_id: {channel, target, register
   等价于 trust_env=False 的意图（hub 可能被注入了代理给 claude 用，TG 要直连）。
 """
 import json
+import os
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 
 from core import config
 
 ROUTES_PATH = config.runtime_dir() / "notify_routes.json"
+TOKEN_PATH = config.runtime_dir() / ".notify_token"
+
+
+# ---- 鉴权 token（N-M2：堵未鉴权的开放转发器，§5 P1）----
+
+_TOKEN = None
+
+
+def ensure_token() -> str:
+    """返回 /notify 的共享密钥；不存在则生成并写 .notify_token（0600）。进程内缓存。
+
+    hook / runner 回调读这个文件，放进 X-Notify-Token 头；hub 启动时调一次先把文件备好。
+    """
+    global _TOKEN
+    if _TOKEN:
+        return _TOKEN
+    try:
+        cached = TOKEN_PATH.read_text(encoding="utf-8").strip()
+        if cached:
+            _TOKEN = cached
+            return _TOKEN
+    except OSError:
+        pass
+    import secrets
+    tok = secrets.token_urlsafe(32)
+    # 0o600 原子建文件（别先 644 再 chmod 留窗口）：本机任意进程都够得着 127.0.0.1，token 是唯一闸
+    fd = os.open(str(TOKEN_PATH), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(tok)
+    _TOKEN = tok
+    return _TOKEN
+
+
+# ---- 简易限流（N-M2：同一 session 刷屏防护）----
+
+_RATE: dict = {}            # session_id -> 上次通过的时刻
+_RATE_MIN_INTERVAL = 2.0    # 秒：同一 session 最快 2s 一条（完成通知本就低频，足够堵 flood）
+
+
+def rate_ok(session_id: str) -> bool:
+    now = time.time()
+    if now - _RATE.get(session_id, 0.0) < _RATE_MIN_INTERVAL:
+        return False
+    _RATE[session_id] = now
+    return True
 
 
 # ---- 路由存储（注册 CLI 写、/notify 读，详见 N-M1）----

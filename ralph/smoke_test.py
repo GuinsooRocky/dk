@@ -145,18 +145,23 @@ def check_voice_autodownload():
 
 
 def check_notify_endpoint():
-    """不变量 7：出站通知端点齐（N-M0）—— hub 暴露 /notify + NotifyIn + /config/notify。
+    """不变量 7：出站通知端点齐 + 鉴权（N-M0 + N-M2）。
 
-    后续 N-M2 会在这里扩出 X-Notify-Token / 403 / .notify_token 0600 的断言。
+    N-M0：hub 暴露 /notify + NotifyIn + /config/notify。
+    N-M2：/notify 校验 X-Notify-Token（不匹配 403）；token 写 .notify_token 且 0600。
     """
     src = (ROOT / HUB_FILE).read_text(encoding="utf-8")
+    nfy = (ROOT / "hub/notify.py").read_text(encoding="utf-8")
     need = {
         "/notify 路由": '"/notify"' in src or "'/notify'" in src,
         "NotifyIn 模型": "class NotifyIn" in src,
         "/config/notify": '"/config/notify"' in src or "'/config/notify'" in src,
+        "X-Notify-Token 校验": "x_notify_token" in src or "X-Notify-Token" in src,
+        "403 拒绝": "403" in src,
+        ".notify_token 0600": ".notify_token" in nfy and "0o600" in nfy,
     }
     missing = [k for k, ok in need.items() if not ok]
-    return (not missing), ("出站通知端点齐" if not missing else "缺 " + ", ".join(missing))
+    return (not missing), ("出站通知端点+鉴权齐" if not missing else "缺 " + ", ".join(missing))
 
 
 CHECKS = [

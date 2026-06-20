@@ -15,7 +15,7 @@ import threading
 from collections import deque
 from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header, HTTPException
 from pydantic import BaseModel
 import uvicorn
 
@@ -275,11 +275,16 @@ class NotifyIn(BaseModel):
 
 
 @app.post("/notify")
-async def notify(body: NotifyIn):
+async def notify(body: NotifyIn, x_notify_token: str = Header(default="")):
     """出站「会话完成」通知入口：按 session_id 查路由扇出到飞书/TG（入站 /chat 的反向）。
 
-    鉴权见 N-M2（X-Notify-Token）。推送是阻塞子进程/HTTP → 丢线程池别卡事件循环。
+    N-M2 鉴权：本机任意进程/浏览器都够得着 127.0.0.1，/notify 是开放转发器，必须 token。
+    X-Notify-Token 不匹配 → 403；同 session 刷太快 → 429。推送是阻塞子进程/HTTP → 丢线程池。
     """
+    if x_notify_token != notify_mod.ensure_token():
+        raise HTTPException(status_code=403, detail="bad notify token")
+    if not notify_mod.rate_ok(body.session_id):
+        raise HTTPException(status_code=429, detail="notify rate limited")
     log.info("notify session=%s status=%s cwd=%r", body.session_id, body.status, body.cwd[:60])
     result = await asyncio.get_running_loop().run_in_executor(
         None, notify_mod.dispatch, body
@@ -413,6 +418,7 @@ async def stats_insights(days: int = 7):
 
 def main() -> None:
     stats_db.purge_older_than()   # 保留策略：每次起 hub 清掉超 90 天的行(B4，§8.4)
+    notify_mod.ensure_token()     # 先把 .notify_token(0600) 备好，供 hook/runner 回调读(N-M2)
     log.info("=" * 60)
     log.info("Hub 启动  http://%s:%d  引擎=%s 工具=%s 单飞=%d",
              HOST, PORT, CFG.engine, CFG.allowed_tools, CFG.max_concurrency)

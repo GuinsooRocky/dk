@@ -36,7 +36,7 @@
   - 怎么做（仿 hub/app.py 现有范式，逐字复用优先）：① 加 `class NotifyIn(BaseModel){session_id,status,summary,cwd,duration_sec,turns}` + `@app.post("/notify")`（仿 /pending；鉴权放下一条 N-M2）。② 飞书 pusher：子进程跑 `feishu_send.py --raw '<text>'`（逐字复用），按 `supervisor._venv_py` 用飞书 venv；webhook 没配 feishu_send.py exit 1 → hub 把 `ok:false` 暴露，别挂住。③ Telegram pusher：hub 内 helper，`httpx(trust_env=False)` POST `api.telegram.org/bot<token>/sendMessage`，token 取 `[telegram].token`；chat_id **只用注册时存的真实 target，绝不从 allowed_users 反推**（§5 P1 串台）。④ `config.toml` 加 `[notify]` 默认渠道键 + `/config/notify` 端点（仿 /config/channel）。⑤ 路由存储 `notify_routes.json` 放 `config.runtime_dir()`，行 `{session_id:{channel,target,registered_at}}`。
   - 验收：smoke 绿 + 加 `check_notify_endpoint`：断言 hub/app.py 含 `/notify` 路由 + `NotifyIn` + `/config/notify`。
 
-- [ ] **N-M2 · /notify 鉴权**（P1 不可省，趁 hook 上线前先做）
+- [x] **N-M2 · /notify 鉴权**（P1 不可省，趁 hook 上线前先做）
   - 做什么：给 /notify 加共享密钥，堵「未鉴权开放转发器」（§5 P1：本机任意进程/浏览器都够得着 127.0.0.1）。
   - 怎么做：① hub 启动时若无则生成 token，写 `config.runtime_dir()/.notify_token`（0600）。② /notify 校验 `X-Notify-Token` 头，不匹配 403。③ 按 session_id 简单限流。
   - 验收：smoke 绿 + `check_notify_endpoint` 扩断言 /notify 含 token/403 校验 + `.notify_token` 0600。
