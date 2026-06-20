@@ -1,6 +1,20 @@
 import SwiftUI
 import AppKit
 
+// 工具三档（SettingsView + §4 向导共用）：只读(默认) / 读+写 / 全权(含运行命令 Bash)。
+// 单选替代逐个勾选，避免随手开 Bash。tools 列表与 SettingsView 的 allTools/readonlyTools 一致。
+enum ToolTier: CaseIterable, Hashable {
+    case readonly, readwrite, full
+
+    var tools: [String] {
+        switch self {
+        case .readonly:  return ["Read", "Glob", "Grep", "WebFetch"]
+        case .readwrite: return ["Read", "Glob", "Grep", "WebFetch", "Write", "Edit"]
+        case .full:      return ["Read", "Glob", "Grep", "WebFetch", "Bash", "Write", "Edit"]
+        }
+    }
+}
+
 // Settings tab：扁平行（左=名+副标题，右=控件，控件统一右对齐）。
 // 无标题（tab 已标"设置"）；可操作项在上，只读信息沉底。
 struct SettingsView: View {
@@ -128,11 +142,6 @@ struct SettingsView: View {
         case .notLoggedIn: return .orange
         case .checking: return Color.secondary
         }
-    }
-
-    // 工具三档：只读(默认) / 读+写 / 全权(含运行命令 Bash)。单选替代逐个勾选，避免随手开 Bash。
-    private enum ToolTier: CaseIterable, Hashable {
-        case readonly, readwrite, full
     }
 
     private func toolList(_ tier: ToolTier) -> [String] {

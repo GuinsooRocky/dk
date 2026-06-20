@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation   // sysctlbyname（笔记本检测）
 
 // §4.1 多步交互向导（取代静态 OnboardingView 作引导入口）。
 // W1：状态机骨架 + Screen0 资格预检 + Step1 Claude 三态门。
@@ -31,6 +32,9 @@ struct WizardView: View {
     @StateObject private var wiz = WizardModel()
     @StateObject private var claude = ClaudeCheck()   // Step1 复用：检装没装 / 登没登
     @State private var token = ""                      // Step3 粘贴的凭证
+    @State private var selectedTier: ToolTier = .readonly             // Step4 权限档
+    @State private var autostart = Autostart.available()             // Step5 开机自启（默认 ON）
+    @State private var keepAwake = DisableSleep.isOn()               // Step5 合盖不休眠
 
     var body: some View {
         ScrollView {
@@ -42,8 +46,9 @@ struct WizardView: View {
                 case .claude: claudeScreen
                 case .channel: channelScreen
                 case .connect: connectScreen
+                case .perms: permsScreen
+                case .runmode: runmodeScreen
                 case .done: doneScreen
-                default: placeholderScreen
                 }
             }
             .padding(18)
@@ -173,17 +178,69 @@ struct WizardView: View {
         .task { await claude.quickCheck() }   // 进屏先轻检（--version），含超时兜底文案
     }
 
-    // channel/connect/perms/runmode 占位（W2/W3 实装），保持向导可编译可导航
-    private var placeholderScreen: some View {
+    // Step4 权限：三档预设复用 ToolTier；读+写/全权必须沙箱已验证才可选（GUARD-3）；措辞每次显示
+    private var permsScreen: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(i18n.t("wizard.building_title")).dkFont(18, .bold)
-            Text(i18n.t("wizard.building_body")).dkFont(13).foregroundStyle(.secondary)
-            HStack(spacing: 10) {
-                Button(i18n.t("wizard.back")) { wiz.back() }
-                Spacer()
-                Button(i18n.t("wizard.next")) { wiz.next() }.buttonStyle(.borderedProminent)
+            Text(i18n.t("wizard.perms_title")).dkFont(20, .bold)
+            Text(i18n.t("wizard.perms_consent")).dkFont(13).foregroundStyle(.secondary)   // 加人措辞每次显示
+            ForEach(ToolTier.allCases, id: \.self) { tier in
+                let locked = tier != .readonly && !sandboxVerified   // GUARD-3：写/全权要沙箱
+                Button {
+                    selectedTier = tier
+                    let csv = tier.tools.joined(separator: ",")
+                    Task { try? await HubApi.setTools(csv) }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: selectedTier == tier ? "largecircle.fill.circle" : "circle")
+                            .foregroundStyle(selectedTier == tier ? Color.dkAccent : .secondary)
+                        Text(i18n.t(tierKey(tier))).dkFont(14)
+                        if locked {
+                            Text(i18n.t("wizard.needs_sandbox")).dkFont(11).foregroundStyle(.orange)
+                        }
+                    }.contentShape(Rectangle())
+                }.buttonStyle(.plain).disabled(locked)
             }
+            navButtons()
         }
+    }
+
+    private var sandboxVerified: Bool { model.hubStatus?.sandbox_verified ?? false }
+
+    private func tierKey(_ t: ToolTier) -> String {
+        switch t {
+        case .readonly:  return "settings.tools_readonly"
+        case .readwrite: return "settings.tools_readwrite"
+        case .full:      return "settings.tools_full"
+        }
+    }
+
+    // Step5 运行模式：开机自启默认 ON（复用 Autostart）；笔记本警告「合盖即离线」+ 合盖不休眠（复用 DisableSleep）
+    private var runmodeScreen: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(i18n.t("wizard.runmode_title")).dkFont(20, .bold)
+            Toggle(i18n.t("wizard.autostart"), isOn: Binding(
+                get: { autostart },
+                set: { v in autostart = v; if Autostart.available() { Autostart.set(v) } }
+            )).disabled(!Autostart.available())
+            if isLaptop {
+                Text(i18n.t("wizard.laptop_warn")).dkFont(13).foregroundStyle(.orange)
+                Toggle(i18n.t("wizard.keep_awake"), isOn: Binding(
+                    get: { keepAwake },
+                    set: { v in keepAwake = v; Task.detached { _ = DisableSleep.set(v) } }  // 弹密码，丢后台
+                ))
+            }
+            navButtons()
+        }
+    }
+
+    // 笔记本检测：hw.model 含 "Book"（MacBook…）。合盖会断网=bot 离线，故警示。
+    private var isLaptop: Bool {
+        var size = 0
+        sysctlbyname("hw.model", nil, &size, nil, 0)
+        guard size > 0 else { return false }
+        var buf = [CChar](repeating: 0, count: size)
+        sysctlbyname("hw.model", &buf, &size, nil, 0)
+        return String(cString: buf).contains("Book")
     }
 
     private var doneScreen: some View {

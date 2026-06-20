@@ -107,7 +107,7 @@
   - 验收：swift build 过 + `check_wizard_skeleton` 扩断言 Step2/3 存在且 Step3 调 /pending+/allowlist。视觉留 visual-qa。
   - 决策默认：默认渠道 = Telegram-only，飞书/企微 opt-in（战略 §4.1）。
 
-- [ ] **W3 · 向导 Step4 权限 + Step5 运行模式 + 收尾**
+- [x] **W3 · 向导 Step4 权限 + Step5 运行模式 + 收尾**
   - 做什么：§4.1 Step4/5——权限三档+沙箱 / 开机自启+笔记本警告，跑完进主窗。
   - 怎么做：① Step4：三档权限预设复用 `SettingsView` ToolTier；读+写/全权必须沙箱验证才可选（GUARD-3 判据已有），加人措辞每次显示。② Step5：开机自启默认 ON 复用 `Autostart.swift`；笔记本检测警告「合盖即离线」复用 `SleepGuard/DisableSleep`。③ Done → 进 Channels/Insights/Settings 主窗。
   - 验收：swift build 过 + `check_wizard_skeleton` 扩断言 Step4 接 ToolTier、Step5 接 Autostart。视觉留 visual-qa。

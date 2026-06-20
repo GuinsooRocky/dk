@@ -311,6 +311,11 @@ def check_wizard_skeleton():
         problems.append("缺 Step2/Step3 屏")
     if "allowlist" not in src or "pending" not in src:
         problems.append("Step3 没接 /allowlist+/pending 实时抓 ID")
+    # W3：Step4 接 ToolTier（权限三档）+ Step5 接 Autostart（开机自启）
+    if "permsScreen" not in src or "ToolTier" not in src:
+        problems.append("Step4 没接 ToolTier")
+    if "runmodeScreen" not in src or "Autostart" not in src:
+        problems.append("Step5 没接 Autostart")
     return (not problems), ("向导骨架就位" if not problems else "; ".join(problems))
 
 
