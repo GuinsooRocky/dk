@@ -41,7 +41,7 @@
   - 怎么做：① hub 启动时若无则生成 token，写 `config.runtime_dir()/.notify_token`（0600）。② /notify 校验 `X-Notify-Token` 头，不匹配 403。③ 按 session_id 简单限流。
   - 验收：smoke 绿 + `check_notify_endpoint` 扩断言 /notify 含 token/403 校验 + `.notify_token` 0600。
 
-- [ ] **N-M1 · 全局 SessionEnd hook + 注册 CLI**
+- [x] **N-M1 · 全局 SessionEnd hook + 注册 CLI**
   - 做什么：让任意本机 Claude session 跑完触发通知（功能决定性差异点；提案 §6 M1，决策④先只做 CLI）。
   - 怎么做：① `hub/notify_hook.py`（~50 行）：读 stdin JSON → **P0 缓解先行**（cwd 在 CFG.work_dir/`~/claude-*-workdir` 树下 → 立刻 exit 0；带 `CHATCC_SUPERVISED=1` → exit 0，双保险排除 bot 自起进程）→ 查 notify_routes.json 没注册 → exit 0 → 命中才带 `X-Notify-Token` POST /notify。**永远 exit 0**，httpx `trust_env=False`。② `hub/watch.py` register/unregister：**内容指纹认 session_id，绝不用 mtime**（memory 铁律，mtime 会抓到并发的 bot 自己会话）；register 时存真实 target（TG 的 effective_chat.id）。③ 把 SessionEnd hook 装进 `~/.claude/settings.json` **不在 loop 内自动改**（动全局配置该归 harness）——写进文末人工验收；loop 只把 notify_hook.py 备好。
   - 验收：smoke 绿 + 加 `check_notify_hook`：断言 notify_hook.py 含 work_dir 排除 + CHATCC_SUPERVISED 检查 + 始终 exit 0；watch.py 含 register/unregister 且**不含**按 mtime 排序认 session（grep 反向断言）。

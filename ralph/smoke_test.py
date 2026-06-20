@@ -164,6 +164,36 @@ def check_notify_endpoint():
     return (not missing), ("出站通知端点+鉴权齐" if not missing else "缺 " + ", ".join(missing))
 
 
+def check_notify_hook():
+    """不变量 8：SessionEnd hook + 注册 CLI 就位（N-M1）。
+
+    notify_hook.py：排除 bot work_dir + 查 CHATCC_SUPERVISED + 永远 exit 0（P0 防自循环）。
+    watch.py：有 register/unregister，且**不**按 file mtime 认 session（反向断言，铁律）。
+    """
+    problems = []
+    hook = ROOT / "hub/notify_hook.py"
+    if not hook.exists():
+        problems.append("缺 hub/notify_hook.py")
+    else:
+        h = hook.read_text(encoding="utf-8")
+        if "workdir" not in h.lower():
+            problems.append("hook 没排除 bot work_dir")
+        if "CHATCC_SUPERVISED" not in h:
+            problems.append("hook 没查 CHATCC_SUPERVISED")
+        if "sys.exit(0)" not in h:
+            problems.append("hook 没保证 exit 0")
+    watch = ROOT / "hub/watch.py"
+    if not watch.exists():
+        problems.append("缺 hub/watch.py")
+    else:
+        w = watch.read_text(encoding="utf-8")
+        if "register" not in w or "unregister" not in w:
+            problems.append("watch 缺 register/unregister")
+        if re.search(r"st_mtime|getmtime", w):   # 反向断言：绝不用 file mtime 认 session（铁律）
+            problems.append("watch 用了 file mtime 认 session（违反铁律）")
+    return (not problems), ("hook+注册 CLI 就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -172,6 +202,7 @@ CHECKS = [
     ("swift-app   macapp 编译", check_swift_build),
     ("voice-dl    语音缺失自动下载", check_voice_autodownload),
     ("notify-api  出站通知端点", check_notify_endpoint),
+    ("notify-hook hook+注册CLI", check_notify_hook),
 ]
 
 

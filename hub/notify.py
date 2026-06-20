@@ -88,6 +88,25 @@ def get_route(session_id: str):
     return load_routes().get(session_id)
 
 
+def is_bot_workdir(cwd: str) -> bool:
+    """cwd 落在 bot 自己的 work_dir 树下（~/claude-*-workdir）→ 是 bot 自起的 claude。
+
+    P0 防自循环/自通知：这类 session 绝不纳管、绝不通知。bot 跑在 ~/claude-hub-workdir、
+    ~/claude-feishu-workdir 等，天然与用户项目目录隔离。
+    """
+    if not cwd:
+        return False
+    try:
+        p = Path(cwd).expanduser().resolve()
+    except Exception:
+        return False
+    home = Path.home().resolve()
+    for parent in [p, *p.parents]:
+        if parent.parent == home and parent.name.startswith("claude-") and parent.name.endswith("-workdir"):
+            return True
+    return False
+
+
 # ---- 默认渠道（config.toml [notify].channel）----
 
 def default_channel() -> str:
