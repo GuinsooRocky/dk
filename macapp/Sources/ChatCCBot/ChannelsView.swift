@@ -12,7 +12,6 @@ struct ChannelsView: View {
             VStack(alignment: .leading, spacing: DKSpace.lg) {
                 header
                 brainBanner
-                usageCard
                 channelList
             }
             .padding(.horizontal, DKSpace.lg).padding(.vertical, DKSpace.lg)
@@ -47,57 +46,7 @@ struct ChannelsView: View {
         }
     }
 
-    // 用量摘要：过去 7 天持久化数据（SQLite，跨重启存活）。B4。
-    private var usageCard: some View {
-        let ins = model.insights
-        let up = model.hubStatus?.uptime_sec ?? 0
-        let top = ins?.by_user.max { $0.value < $1.value }
-        return VStack(alignment: .leading, spacing: DKSpace.sm) {
-            HStack(spacing: DKSpace.xl) {
-                usageMetric("\(ins?.total ?? 0)", i18n.t("insights.total_label"))
-                usageMetric(uptimeStr(up), i18n.t("insights.uptime_label"))
-                Spacer()
-                HStack(spacing: DKSpace.sm) {
-                    usagePill(.dkGreen, i18n.t("insights.ok", ins?.ok ?? 0))
-                    usagePill(.dkRed, i18n.t("insights.err", ins?.err ?? 0))
-                }
-            }
-            if let top, top.value > 0 {
-                Text("\(i18n.t("insights.most_active")) · \(shortId(top.key)) · \(top.value)")
-                    .dkFont(11).foregroundStyle(.tertiary)
-            }
-        }
-        .padding(DKSpace.lg)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .dkCard()
-    }
-
-    private func shortId(_ s: String) -> String {
-        s.count > 10 ? "…" + s.suffix(6) : s
-    }
-
-    private func usageMetric(_ v: String, _ label: String) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(v).dkFont(20, .bold).monospacedDigit()
-            Text(label).dkFont(11).foregroundStyle(.secondary)
-        }
-    }
-
-    private func usagePill(_ c: Color, _ t: String) -> some View {
-        HStack(spacing: 4) {
-            Circle().fill(c).frame(width: 6, height: 6)
-            Text(t).dkFont(12)
-        }
-        .padding(.horizontal, 8).padding(.vertical, 3).background(c.opacity(0.14), in: Capsule())
-    }
-
-    private func uptimeStr(_ sec: Int) -> String {
-        if sec < 60 { return i18n.t("insights.just_started") }
-        if sec >= 3600 { return "\(sec / 3600)h\(sec % 3600 / 60)m" }
-        return "\(sec / 60)m"
-    }
-
-    // 每个渠道独立成卡片（填充+描边，与用量卡一致），卡片间留间距
+    // 每个渠道独立成卡片（填充+描边），卡片间留间距
     private var channelList: some View {
         VStack(spacing: DKSpace.md) {
             ForEach(model.channelRows) { row in

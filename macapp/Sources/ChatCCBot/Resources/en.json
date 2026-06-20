@@ -65,6 +65,8 @@
   "insights.empty_sub": "Connect a channel to start chatting",
   "insights.empty_sub_waiting": "Channels are connected — once someone messages the bot, conversations show up here",
   "insights.most_active": "Most active",
+  "insights.by_channel": "By channel",
+  "insights.by_day": "By day",
 
   "settings.tools": "Allowed tools",
   "settings.concurrency": "Concurrency (single-flight)",
