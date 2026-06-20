@@ -21,7 +21,7 @@ import uvicorn
 
 # ---- 复用跨渠道 core（仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, runner, threads, sandbox  # noqa: E402
+from core import config, runner, threads, sandbox, stats_db  # noqa: E402
 
 config.load_env(config.app_root() / "hub" / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
@@ -157,6 +157,7 @@ async def chat(body: ChatIn):
         elif result.get("api_unreachable"):
             _mark_brain(False)             # claude 连不上 API（代理断/网络断）
         _bump("ok" if result["ok"] else "err")
+        stats_db.record(body.channel, body.user, result["ok"])   # 持久化(B4)，重启不丢
         with _stats_lock:
             _STATS["last_text"] = body.text[:120]
         text = result["text"]
@@ -363,7 +364,14 @@ async def stats_clear():
     with _stats_lock:
         _STATS.update({"total": 0, "ok": 0, "busy": 0, "err": 0,
                        "by_user": {}, "last_at": 0.0, "last_text": ""})
+    stats_db.clear()   # 连持久化的也清(B4)
     return {"ok": True}
+
+
+@app.get("/stats/insights")
+async def stats_insights(days: int = 7):
+    """持久化用量洞察（past N days · 趋势 · by-user/channel）——SQLite，重启不丢。B4。"""
+    return stats_db.insights(days)
 
 
 def main() -> None:
