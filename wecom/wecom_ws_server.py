@@ -25,7 +25,7 @@ from core import config, security, dedup, chunking, hub_client, replies  # noqa:
 from wecom_aibot_sdk import WSClient, WSClientOptions  # noqa: E402
 
 # ---- 加载 .env + 配置 ----
-config.load_env(Path(__file__).parent / ".env")
+config.load_env(config.channel_env_path("wecom"))
 CFG = config.load(str(Path.home() / "claude-wecom-workdir"))
 
 BOT_ID = os.getenv("WECOM_BOT_ID", "").strip()

@@ -23,7 +23,7 @@ import uvicorn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import config, runner, threads, sandbox  # noqa: E402
 
-config.load_env(Path(__file__).parent / ".env")
+config.load_env(config.app_root() / "hub" / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
 HOST = "127.0.0.1"
 PORT = int(__import__("os").getenv("HUB_PORT", "8787"))

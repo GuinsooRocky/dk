@@ -73,9 +73,15 @@ _CHANNEL_ENV = {
 }
 
 
+def app_root() -> Path:
+    """配置根目录：dev = 仓库根；frozen/分发 = 环境变量 DK_ROOT（supervisor 注入）。
+    渠道/hub 据此找自己的 .env、config.toml——冻结成 sidecar 后 __file__ 指向 bundle 不可靠。"""
+    r = os.environ.get("DK_ROOT")
+    return Path(r).expanduser() if r else Path(__file__).resolve().parent.parent
+
+
 def channel_env_path(channel: str) -> Path:
-    root = Path(__file__).resolve().parent.parent
-    return root / _CHANNEL_ENV.get(channel, f"{channel}/.env")
+    return app_root() / _CHANNEL_ENV.get(channel, f"{channel}/.env")
 
 
 def read_env_value(env_path, key: str) -> str:

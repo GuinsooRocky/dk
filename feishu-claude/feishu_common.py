@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import config, security, dedup, chunking, hub_client, replies  # noqa: E402
 
 # ---- 加载 .env + 配置 ----
-config.load_env(Path(__file__).parent / ".env")
+config.load_env(config.channel_env_path("feishu"))
 CFG = config.load(str(Path.home() / "claude-feishu-workdir"))
 
 APP_ID = os.getenv("FEISHU_APP_ID", "").strip()

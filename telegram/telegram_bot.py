@@ -21,7 +21,7 @@ from telegram import Update  # noqa: E402
 from telegram.ext import Application, MessageHandler, filters, ContextTypes  # noqa: E402
 
 # ---- 加载 .env ----
-config.load_env(Path(__file__).parent / ".env")
+config.load_env(config.channel_env_path("telegram"))
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TRIGGER_PREFIX = os.getenv("TRIGGER_PREFIX", "/c ")
