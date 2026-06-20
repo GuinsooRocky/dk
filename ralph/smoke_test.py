@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-chat-cc-bot back-pressure —— Ralph loop 的"检查"那一格。
+DK back-pressure —— Ralph loop 的"检查"那一格。
 
 不是单测,是**链路一致性不变量**:验证"同一改动有没有铺满所有渠道、有没有
 破坏共享契约"。Ralph 每轮干完一件事跑它,绿了才 commit,否则这一轮作废。
@@ -130,7 +130,7 @@ CHECKS = [
 
 
 def main() -> int:
-    print("=== chat-cc-bot 链路一致性冒烟 ===")
+    print("=== DK 链路一致性冒烟 ===")
     all_ok = True
     for label, fn in CHECKS:
         try:

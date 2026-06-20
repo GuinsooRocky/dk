@@ -1,4 +1,4 @@
-# chat-cc-bot
+# DK
 
 把**飞书 / Telegram / 企业微信**的消息（含**语音**）桥接到本机 Claude Code，在你自己的 Mac 上跑任务并把结果回到对话里。**可自托管**：拿走填自己的 Claude + 自己的 bot token，跑自己的实例。
 

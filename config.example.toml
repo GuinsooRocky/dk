@@ -1,4 +1,4 @@
-# chat-cc-bot 统一配置（拷成 config.toml 填自己的）
+# DK 统一配置（拷成 config.toml 填自己的）
 # 每个人用自己的 Claude（本机已登录的 claude CLI）+ 自己的 bot token。
 
 [claude]

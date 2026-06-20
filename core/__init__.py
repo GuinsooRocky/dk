@@ -1,4 +1,4 @@
-"""chat-cc-bot 跨渠道共享核心。
+"""DK 跨渠道共享核心。
 
 各渠道（飞书 webhook / 飞书 WS / 微信桥）复用这里的：
   - config   配置加载(.env 权威) + prompt 构造

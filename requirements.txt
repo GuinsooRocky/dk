@@ -1,4 +1,4 @@
-# chat-cc-bot 合并依赖 —— 单解释器打包（py3.12）
+# DK 合并依赖 —— 单解释器打包（py3.12）
 #
 # 由 protobuf 共存实测得出（2026-06-17）：四渠道 SDK + core 依赖在同一
 # py3.12 解释器同进程 import 无冲突；全程不拉入 protobuf/grpc。
