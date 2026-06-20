@@ -56,7 +56,8 @@
   - 怎么做：① notify_routes.json >24h 残留行清扫（hub 启动或 /notify 时顺扫）。② **把 `/notify` 加进 `ralph/smoke_test.py` 的 `REQUIRED_ENDPOINTS`**（此时已实现，加了不红）。③ 路径 B（决策③）：`core/runner.py` `_run_cli` 返回后回调 /notify，**默认关**（config 开关），避免和 hook 注册表打架（§5 P0 第4点 来源互斥）。
   - 验收：smoke 绿（REQUIRED_ENDPOINTS 已含 /notify）+ runner 回调有「默认关」开关守卫。
 
-- [ ] **N-M4 · watcher 崩溃兜底**（L，全批最易写坏，谨慎）
+- [⚠] **N-M4 · watcher 崩溃兜底**（L，全批最易写坏，谨慎）
+  - ⚠ 卡住:M4 误判判据无法机械验收 —— 从 live-append JSONL 在有限时间内无法把「session 真崩了 vs 只是空闲等下一轮」做成可机械断言的不变量（任何静默 debounce 必对空闲会话假阳性刷屏，spec 已预警「空闲间隔会误触发」）。唯一能真消歧的进程级存活信号（session→pid）Claude Code 不暴露，watcher 拿不到；`check_notify_watcher` 只能验结构、验不了「不刷屏」这个真正确性。按任务自带逃生指令 + PROMPT 铁律跳过，留人工：要么接 watchdog 进程级存活信号再做，要么放弃 M4 只靠 SessionEnd（崩溃漏通知可接受）。
   - 做什么：堵 `kill -9`/硬崩溃不触发 SessionEnd 的缺口（提案 §6 M4，决策②）。
   - 怎么做：`supervisor.py` 托管 watcher 进程 tail `~/.claude/projects/**/*.jsonl`；内容指纹 + per-file offset 游标 + debounce；**与 SessionEnd hook 去重**（同 session_id 只发一次）。
   - ⚠ 风险：从 live-append JSONL 推断「整个 session 完了 vs 这轮完了」天生易假阳性。**若一轮内无法把「turn-end vs session-end 误判」做成可机械断言的不变量，就把本任务改 `- [⚠]` 记 `⚠ 卡住:M4 误判判据无法机械验收` 跳过**，别硬写会刷屏的 watcher。
