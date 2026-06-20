@@ -162,6 +162,8 @@ def check_notify_endpoint():
         # N-M6：24h 残留清扫 + runner 回调默认关
         "24h 路由清扫": "purge_stale_routes" in nfy,
         "runner 回调默认关": "DK_RUNNER_NOTIFY" in (ROOT / "core/runner.py").read_text(encoding="utf-8"),
+        # N-M5：/notify 对企微有明确分支（诚实报错改投）
+        "企微明确分支": 'channel == "wecom"' in nfy,
     }
     missing = [k for k, ok in need.items() if not ok]
     return (not missing), ("出站通知端点+鉴权+收尾齐" if not missing else "缺 " + ", ".join(missing))

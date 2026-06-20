@@ -228,6 +228,13 @@ def dispatch(n) -> dict:
         return {"channel": "feishu", **push_feishu(text)}
     if channel == "telegram":
         return {"channel": "telegram", **push_telegram(text, target or "")}
-    # 企微等出站主动发送暂不支持 —— 诚实报错改投（N-M5 再细化 SDK 调研结论）
+    if channel == "wecom":
+        # N-M5 调研结论：wecom_aibot_sdk 确有 WSClient.send_message(chatid, body)
+        # 「Proactively send message (no callback frame needed)」——by-chatid 主动发送 API 存在。
+        # 但它经**渠道进程持有的那条已认证 WS 连接**发；hub 进程够不着那条连接，另开同 bot_id 的
+        # 第二条 WS 会和在线渠道抢连接（很可能把渠道踢下线）。安全做法是经 wecom 进程中转（未来 IPC），
+        # 不在 hub 里 fabricate 一条竞争连接。当前诚实报错改投（决策⑥：不编造 SDK 调用）。
+        return {"channel": "wecom", "ok": False,
+                "reason": "企微出站需经渠道进程的 WS 连接中转（hub 够不着），暂不支持主动发送，请改投飞书/Telegram"}
     return {"channel": channel, "ok": False,
             "reason": f"{channel} 暂不支持出站主动发送，请改投飞书/Telegram"}

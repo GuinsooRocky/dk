@@ -63,7 +63,8 @@
   - ⚠ 风险：从 live-append JSONL 推断「整个 session 完了 vs 这轮完了」天生易假阳性。**若一轮内无法把「turn-end vs session-end 误判」做成可机械断言的不变量，就把本任务改 `- [⚠]` 记 `⚠ 卡住:M4 误判判据无法机械验收` 跳过**，别硬写会刷屏的 watcher。
   - 验收：smoke 绿 + `check_notify_watcher`：断言 watcher 模块存在 + offset 游标 + 与 hook 的 session_id 去重。
 
-- [ ] **N-M5 · 企微出站调研 + 支持**（调研型，很可能无解→诚实报错也算完成）
+- [x] **N-M5 · 企微出站调研 + 支持**（调研型，很可能无解→诚实报错也算完成）
+  - 📌 调研结论：`wecom_aibot_sdk` **确有** by-chatid 主动发送 API —— `WSClient.send_message(chatid, body)`，docstring 明写「Proactively send message (no callback frame needed)」（body 限 markdown/template_card）。**但**它经渠道进程持有的那条已认证 WS 连接发，**hub 进程够不着**；hub 另开同 bot_id 的第二条 WS 会和在线渠道抢连接（很可能把渠道踢下线）。故当前落**诚实报错改投飞书/TG**（dispatch `channel == "wecom"` 分支），不在 hub fabricate 竞争连接。未来要真支持：经 wecom 渠道进程 IPC 中转 send_message，别在 hub 开第二条 WS。
   - 做什么：查企微 SDK 有没有 by-chatid 主动发送 API（提案 §6 M5，决策⑥）。
   - 怎么做：调研 `wecom_aibot_sdk` 是否有脱离 frame 的 by-chatid 发送（现 `wecom_ws_server.py:145` reply 是 frame-bound）。**有** → 做 wecom pusher + 注册存 chatid；**无（很可能）** → /notify 对企微**明确报错并提示改投飞书/TG**（不编造 SDK 调用）。两条都算完成。调研结论写一行存到本任务行下。
   - 验收：smoke 绿 + /notify 对 channel=wecom 有明确分支（pusher 或诚实报错改投）。
