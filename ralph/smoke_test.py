@@ -223,6 +223,31 @@ def check_trust_tier():
     return (not problems), ("trust_tier 字段就位" if not problems else "; ".join(problems))
 
 
+def check_health_probe():
+    """不变量 10：渠道鉴权探针就位（P1）。
+
+    hub 有周期探针 + /supervisor 输出含 auth_ok + 三渠道各有分支（tg/feishu 主动探、
+    wecom 靠心跳反推）。
+    """
+    app = (ROOT / HUB_FILE).read_text(encoding="utf-8")
+    problems = []
+    if "_probe_health_loop" not in app:
+        problems.append("hub 缺周期健康探针")
+    if "auth_ok" not in app:
+        problems.append("/supervisor 没输出 auth_ok")
+    if '_set_health("wecom"' not in app:
+        problems.append("探针缺 wecom 分支")
+    h = ROOT / "hub/health.py"
+    if not h.exists():
+        problems.append("缺 hub/health.py")
+    else:
+        hs = h.read_text(encoding="utf-8")
+        for fn in ("probe_telegram", "probe_feishu"):
+            if fn not in hs:
+                problems.append(f"health 缺 {fn}")
+    return (not problems), ("鉴权探针就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -233,6 +258,7 @@ CHECKS = [
     ("notify-api  出站通知端点", check_notify_endpoint),
     ("notify-hook hook+注册CLI", check_notify_hook),
     ("trust-tier  渠道信任分级", check_trust_tier),
+    ("health      渠道鉴权探针", check_health_probe),
 ]
 
 

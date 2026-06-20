@@ -21,6 +21,7 @@ struct ChannelStatus: Codable, Identifiable {
     var restarts: Int?
     var backoff: Int?
     var last_error: String?
+    var auth_ok: Bool?   // P1 鉴权有效性：true/false/nil(未探到)。连得上但 false=认证失效
     var id: String { name }
 }
 

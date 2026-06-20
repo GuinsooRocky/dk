@@ -122,6 +122,8 @@ struct ChannelDisplay: Identifiable {
     var id: String { meta.key }
     var state: ChannelState {
         guard let s = status else { return .unknown }
+        // 进程连得上但鉴权失效（P1）→ 独立态「认证失效」，区别于进程 down
+        if s.state == "connected" && s.auth_ok == false { return .authFailed }
         return ChannelState(s.state)
     }
 }

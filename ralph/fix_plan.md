@@ -77,7 +77,7 @@
   - 验收：smoke 绿 + 加 `check_trust_tier`：断言 `ChannelMeta` 含 `trustTier` 且 `KNOWN_CHANNELS` 每条有值。
   - 决策默认：v1 全 safe（无 experimental 渠道发货）。
 
-- [ ] **P1 · 渠道健康探针（proactive auth 有效性）**
+- [x] **P1 · 渠道健康探针（proactive auth 有效性）**
   - 做什么：主动定期验证各渠道鉴权是否还有效，把「进程活着但认证失效」从「连得上」里分出来（战略 later）。
   - 怎么做：① hub 起后台周期探针（默认 5min）：feishu = `get_tenant_token()` 拿到非空 token（feishu_common.py:56）；telegram = httpx(trust_env=False) GET `getMe` 200；wecom = 复用 client `is_authenticated`（wecom_ws_server.py:184，让壳上报）。② 结果存 hub `_HEALTH` dict，经 `/supervisor` 每行加 `auth_ok` 字段。③ `macapp` Channels 把 auth_ok=false 显成独立态「认证失效」（区别于进程 down），提示去 Settings 重填凭证。
   - 验收：smoke 绿 + 加 `check_health_probe`：断言 hub 有周期探针 + `/supervisor` 输出含 auth_ok + 三渠道各有探针分支。

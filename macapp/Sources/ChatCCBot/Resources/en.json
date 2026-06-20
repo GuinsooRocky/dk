@@ -44,6 +44,7 @@
   "state.off": "Off",
   "state.needs_setup": "Needs setup (nobody can use it)",
   "state.connecting": "Connecting",
+  "state.auth_failed": "Auth expired",
   "state.unknown": "Unknown",
 
   "channel.telegram.name": "Telegram",

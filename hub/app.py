@@ -23,6 +23,7 @@ import uvicorn
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import config, runner, threads, sandbox, stats_db  # noqa: E402
 from hub import notify as notify_mod  # noqa: E402
+from hub import health as health_mod  # noqa: E402
 
 config.load_env(config.app_root() / "hub" / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
@@ -64,6 +65,11 @@ _HB_WINDOW = 300          # 秒：超过没收到心跳 → connected 降级 con
 _brain_lock = threading.Lock()
 _BRAIN = {"reachable": None, "ts": 0.0}   # True 可达 / False 不可达 / None 未知
 
+# 渠道鉴权有效性（P1）：进程连得上 ≠ 凭证还有效。周期主动探，把"认证失效"从"连得上"分出来。
+_health_lock = threading.Lock()
+_HEALTH: dict = {}        # channel -> {"auth_ok": bool|None, "ts": float}
+_HEALTH_INTERVAL = 300    # 秒：探针间隔（决策默认 5min）
+
 
 def _mark_brain(reachable: bool) -> None:
     with _brain_lock:
@@ -96,6 +102,34 @@ def _probe_brain_loop() -> None:
 
 
 threading.Thread(target=_probe_brain_loop, daemon=True).start()
+
+
+def _set_health(channel: str, auth_ok) -> None:
+    with _health_lock:
+        _HEALTH[channel] = {"auth_ok": auth_ok, "ts": time.time()}
+
+
+def _probe_health_loop() -> None:
+    """每 5min 主动验证各渠道鉴权（P1）。纯本地+各平台 API 直连，不碰 claude、不耗 token。
+
+    telegram/feishu 主动探（health_mod，stdlib urllib 直连）；wecom 无脱 WS 鉴权 API，
+    靠"渠道壳只在 is_authenticated 时才发心跳"反推：近期有 wecom 心跳 = 认证有效。
+    """
+    while True:
+        try:
+            _set_health("telegram", health_mod.probe_telegram())
+            _set_health("feishu", health_mod.probe_feishu())
+            now = time.time()
+            with _hb_lock:
+                wecom_hb = _HEARTBEAT.get("wecom", 0)
+            # 有过 wecom 心跳且新鲜 → 认证有效；从没拍过 → None（未知，别误判失效）
+            _set_health("wecom", (now - wecom_hb < _HB_WINDOW) if wecom_hb else None)
+        except Exception:
+            pass
+        time.sleep(_HEALTH_INTERVAL)
+
+
+threading.Thread(target=_probe_health_loop, daemon=True).start()
 
 
 def _bump(field: str, user_key: str = "") -> None:
@@ -380,6 +414,11 @@ async def supervisor():
                         continue
                     if now - last > _HB_WINDOW:
                         ch["state"] = "connecting"
+        # 叠加鉴权有效性（P1）：每行加 auth_ok（true/false/null=未探到）。
+        # 进程连得上但 auth_ok=false → app 显"认证失效"，区别于进程 down。
+        with _health_lock:
+            for ch in data.get("channels", []):
+                ch["auth_ok"] = (_HEALTH.get(ch.get("name"), {}) or {}).get("auth_ok")
         return data
     except Exception:
         return {"ok": False, "channels": [], "reason": "supervisor 状态不可用（未经 supervisor 启动？）"}
