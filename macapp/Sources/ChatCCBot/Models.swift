@@ -74,14 +74,20 @@ struct Insights: Codable {
 struct ChannelMeta {
     let key: String      // telegram / feishu / wecom / wechat
     let symbol: String   // SF Symbol
+    // 信任分级（T1，战略 §6.3 第三方插件生态预留）：safe / experimental。
+    // v1 现有三渠道全 safe、不发任何 experimental。
+    // ②ChannelsView 实验性分组 UI + ③config 段 trust_tier 透传：等真有 experimental 渠道再做
+    //   （现无 experimental → 现状即「不显」，已满足；现在造分组 UI 是给不存在的态建设，故延期）。
+    // 用 var 才能在 memberwise init 里显式传值（let+默认值会被排除在 init 外）；实例仍只读用。
+    var trustTier: String = "safe"
     var nameKey: String { "channel.\(key).name" }
     var noteKey: String { "channel.\(key).note" }
 }
 
 let KNOWN_CHANNELS: [ChannelMeta] = [
-    .init(key: "telegram", symbol: "paperplane.fill"),
-    .init(key: "feishu", symbol: "bird.fill"),
-    .init(key: "wecom", symbol: "building.2.fill"),
+    .init(key: "telegram", symbol: "paperplane.fill", trustTier: "safe"),
+    .init(key: "feishu", symbol: "bird.fill", trustTier: "safe"),
+    .init(key: "wecom", symbol: "building.2.fill", trustTier: "safe"),
 ]
 
 // 微信：故意做成禁用信息行（个人微信无安全接法，见战略 §6）

@@ -71,7 +71,7 @@
 
 ### 设计批次（§9 later + §4 向导，2026-06-21 补设计；决策默认见各任务，可改）
 
-- [ ] **T1 · trust_tier 渠道信任分级字段**
+- [x] **T1 · trust_tier 渠道信任分级字段**
   - 做什么：给渠道加 `trust_tier`（safe / experimental），UI 按层分组；为第三方插件生态预留（战略 §6.3）。v1 现有三渠道全 = safe，不发任何 experimental。
   - 怎么做：① `macapp/.../Models.swift` 的 `ChannelMeta` 加 `trustTier: String`（默认 "safe"），`KNOWN_CHANNELS` 三条都填 "safe"。② `ChannelsView` 若存在 experimental 渠道则分组到「实验性」区带警示副标，无则不显（现状即不显）。③ config 渠道段可选 `trust_tier`（缺省 safe），hub 透传。
   - 验收：smoke 绿 + 加 `check_trust_tier`：断言 `ChannelMeta` 含 `trustTier` 且 `KNOWN_CHANNELS` 每条有值。

@@ -204,6 +204,25 @@ def check_notify_hook():
     return (not problems), ("hook+注册 CLI 就位" if not problems else "; ".join(problems))
 
 
+def check_trust_tier():
+    """不变量 9：渠道信任分级字段就位（T1）。
+
+    ChannelMeta 含 trustTier，且 KNOWN_CHANNELS 三条都显式给了值（§6.3 插件生态预留）。
+    macapp 不存在 → 跳过（同 swift-app）。
+    """
+    p = ROOT / "macapp/Sources/ChatCCBot/Models.swift"
+    if not p.exists():
+        return True, "无 macapp，跳过"
+    src = p.read_text(encoding="utf-8")
+    problems = []
+    if "trustTier" not in src:
+        problems.append("ChannelMeta 缺 trustTier")
+    n = src.count('trustTier: "')   # 只数 .init 里的显式赋值（struct 定义是 trustTier: String，不计）
+    if n < 3:
+        problems.append(f"KNOWN_CHANNELS trustTier 显式值不足（{n}/3）")
+    return (not problems), ("trust_tier 字段就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -213,6 +232,7 @@ CHECKS = [
     ("voice-dl    语音缺失自动下载", check_voice_autodownload),
     ("notify-api  出站通知端点", check_notify_endpoint),
     ("notify-hook hook+注册CLI", check_notify_hook),
+    ("trust-tier  渠道信任分级", check_trust_tier),
 ]
 
 
