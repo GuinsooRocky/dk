@@ -220,6 +220,33 @@ def set_channel_enabled(config_path, name: str, enabled: bool) -> bool:
     return False
 
 
+def set_notify_channel(config_path, channel: str) -> bool:
+    """写 config.toml [notify].channel（默认出站通知渠道）。段/键缺了就补出来，保留排版。"""
+    p = Path(config_path)
+    if not p.exists():
+        return False
+    val = f"channel = {_toml_str(channel)}"
+    lines, out, in_notify, done = p.read_text().splitlines(), [], False, False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            if in_notify and not done:        # 离开 [notify] 仍没写 channel → 补一行
+                out.append(val); done = True
+            in_notify = (s == "[notify]")
+            out.append(line)
+            continue
+        if in_notify and not done and s.lstrip("#").strip().startswith("channel"):
+            out.append(val); done = True
+            continue
+        out.append(line)
+    if in_notify and not done:                # [notify] 是最后一段
+        out.append(val); done = True
+    if not done:                              # 整个文件没有 [notify] 段 → 追加
+        out += ["", "[notify]", val]; done = True
+    p.write_text("\n".join(out) + "\n")
+    return True
+
+
 @dataclass(frozen=True)
 class Config:
     claude_cmd: str

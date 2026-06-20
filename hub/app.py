@@ -22,6 +22,7 @@ import uvicorn
 # ---- 复用跨渠道 core（仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import config, runner, threads, sandbox, stats_db  # noqa: E402
+from hub import notify as notify_mod  # noqa: E402
 
 config.load_env(config.app_root() / "hub" / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
@@ -209,6 +210,20 @@ async def config_channel(body: ChannelToggle):
     return {"ok": ok}
 
 
+class NotifyConfig(BaseModel):
+    channel: str   # feishu / telegram
+
+
+@app.post("/config/notify")
+async def config_notify(body: NotifyConfig):
+    """设默认出站通知渠道：写 config.toml [notify].channel（仿 /config/channel）。"""
+    if body.channel not in ("feishu", "telegram"):
+        return {"ok": False, "reason": f"未知渠道 {body.channel}"}
+    cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
+    ok = config.set_notify_channel(cfg_path, body.channel)
+    return {"ok": ok, "channel": body.channel}
+
+
 class ProxyConfig(BaseModel):
     enabled: bool
     port: int = 7897
@@ -248,6 +263,28 @@ async def pending_report(body: PendingReport):
         _PENDING.extend(items)
         _PENDING.append({"channel": body.channel, "user": body.user, "at": time.time()})
     return {"ok": True}
+
+
+class NotifyIn(BaseModel):
+    session_id: str
+    status: str = "ok"          # ok / error / 其它（end_reason 启发式，未必精确）
+    summary: str = ""
+    cwd: str = ""
+    duration_sec: float = 0.0
+    turns: int = 0
+
+
+@app.post("/notify")
+async def notify(body: NotifyIn):
+    """出站「会话完成」通知入口：按 session_id 查路由扇出到飞书/TG（入站 /chat 的反向）。
+
+    鉴权见 N-M2（X-Notify-Token）。推送是阻塞子进程/HTTP → 丢线程池别卡事件循环。
+    """
+    log.info("notify session=%s status=%s cwd=%r", body.session_id, body.status, body.cwd[:60])
+    result = await asyncio.get_running_loop().run_in_executor(
+        None, notify_mod.dispatch, body
+    )
+    return {"ok": bool(result.get("ok")), "result": result}
 
 
 class Heartbeat(BaseModel):

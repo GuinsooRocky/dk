@@ -44,3 +44,7 @@ allowed_users = ""               # userid，逗号分隔
 [voice]
 # 本地 SenseVoice 模型目录（缺省指 MK 的；没有就填自己的）
 # sensevoice_dir = "/Users/你/.mk/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+
+[notify]
+# 出站「会话完成」通知的默认渠道：feishu / telegram（可在菜单栏切）
+channel = "feishu"

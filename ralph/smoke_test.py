@@ -144,6 +144,21 @@ def check_voice_autodownload():
     return (not problems), ("语音自动下载就位" if not problems else "; ".join(problems))
 
 
+def check_notify_endpoint():
+    """不变量 7：出站通知端点齐（N-M0）—— hub 暴露 /notify + NotifyIn + /config/notify。
+
+    后续 N-M2 会在这里扩出 X-Notify-Token / 403 / .notify_token 0600 的断言。
+    """
+    src = (ROOT / HUB_FILE).read_text(encoding="utf-8")
+    need = {
+        "/notify 路由": '"/notify"' in src or "'/notify'" in src,
+        "NotifyIn 模型": "class NotifyIn" in src,
+        "/config/notify": '"/config/notify"' in src or "'/config/notify'" in src,
+    }
+    missing = [k for k, ok in need.items() if not ok]
+    return (not missing), ("出站通知端点齐" if not missing else "缺 " + ", ".join(missing))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -151,6 +166,7 @@ CHECKS = [
     ("hub-api     承重 endpoint", check_hub_endpoints),
     ("swift-app   macapp 编译", check_swift_build),
     ("voice-dl    语音缺失自动下载", check_voice_autodownload),
+    ("notify-api  出站通知端点", check_notify_endpoint),
 ]
 
 

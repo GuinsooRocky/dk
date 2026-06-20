@@ -31,7 +31,7 @@
   - 怎么做：① 新增 `_resolve_dir()` 查找顺序，命中即用不下载：`SENSEVOICE_DIR` 环境变量 → MK 目录 `~/.mk/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` → DK 目录 `~/.dk/models/<同名>`。② 三处都缺 `model.int8.onnx`/`tokens.txt` → 新增 `_ensure_model()` 从 HuggingFace 下载到 **DK 目录**（不写 MK 地盘，DK/MK 解耦）；用 stdlib `urllib`，**不新增重依赖**；失败给清晰报错（保留现有手动设 SENSEVOICE_DIR 兜底文案）。③ `_recognizer()` 缺模型分支从 raise 改成「先 `_ensure_model()` 再加载」。④ 删源码里「分发到没 MK… 或后续加自动下载」那句注释（已兑现）。
   - 验收：smoke 绿 + 在 `smoke_test.py` 加 `check_voice_autodownload`：断言 sensevoice.py 含 `_ensure_model`（或等价下载函数）且 `_recognizer` 缺模型分支不再是裸 raise。**不真跑下载**（228MB，留人工验收）。
 
-- [ ] **N-M0 · 出站通知链路打通**（/notify + 飞书/TG 推送 + 配置）
+- [x] **N-M0 · 出站通知链路打通**（/notify + 飞书/TG 推送 + 配置）
   - 做什么：补 hub→渠道反向通道骨架，让一条 `POST /notify` 扇出到飞书和 Telegram（提案 §6 M0，决策①两渠道默认可切）。
   - 怎么做（仿 hub/app.py 现有范式，逐字复用优先）：① 加 `class NotifyIn(BaseModel){session_id,status,summary,cwd,duration_sec,turns}` + `@app.post("/notify")`（仿 /pending；鉴权放下一条 N-M2）。② 飞书 pusher：子进程跑 `feishu_send.py --raw '<text>'`（逐字复用），按 `supervisor._venv_py` 用飞书 venv；webhook 没配 feishu_send.py exit 1 → hub 把 `ok:false` 暴露，别挂住。③ Telegram pusher：hub 内 helper，`httpx(trust_env=False)` POST `api.telegram.org/bot<token>/sendMessage`，token 取 `[telegram].token`；chat_id **只用注册时存的真实 target，绝不从 allowed_users 反推**（§5 P1 串台）。④ `config.toml` 加 `[notify]` 默认渠道键 + `/config/notify` 端点（仿 /config/channel）。⑤ 路由存储 `notify_routes.json` 放 `config.runtime_dir()`，行 `{session_id:{channel,target,registered_at}}`。
   - 验收：smoke 绿 + 加 `check_notify_endpoint`：断言 hub/app.py 含 `/notify` 路由 + `NotifyIn` + `/config/notify`。
