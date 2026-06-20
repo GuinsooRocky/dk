@@ -101,7 +101,7 @@
   - 怎么做：① 新建向导状态机（`enum WizardStep`：eligibility/claude/channel/connect/perms/runmode/done）+ 容器视图包裹/替换现有 `OnboardingView`（旧静态内容退役只加注释不删）。② Screen0 资格预检：明示「需付费 Claude 订阅 + 常醒 Mac」，给「有/帮我开通」不卡转圈。③ Step1：复用 `ClaudeCheck.swift` 检装没装/登没登，未过不放行，每探针 60s 超时 + 兜底文案。
   - 验收：swift build 过 + 加 `check_wizard_skeleton`：断言存在 WizardStep 状态机 + 复用 ClaudeCheck。**视觉/流程对不对留 visual-qa 人工收尾**（见文末）。
 
-- [ ] **W2 · 向导 Step2 渠道选择 + Step3 连接 sheet（实时抓 ID）**
+- [x] **W2 · 向导 Step2 渠道选择 + Step3 连接 sheet（实时抓 ID）**
   - 做什么：§4.1 Step2/3——选渠道 + 逐渠道连接（粘 token + 实时抓 ID 加白名单）。
   - 怎么做：① Step2：默认只给 Telegram（~60s 可过），飞书/企微藏「我已有开发者账号」勾选后（opt-in，工作路径）。② Step3：token 表单粘贴写 config/.env；**实时抓 ID** 复用后端 `/pending`+`/allowlist`（已通）——提示「现在从手机发一条」，把捕获的 sender 渲染成「把【你】加白名单」一点即加（替代手 grep 回填）。
   - 验收：swift build 过 + `check_wizard_skeleton` 扩断言 Step2/3 存在且 Step3 调 /pending+/allowlist。视觉留 visual-qa。

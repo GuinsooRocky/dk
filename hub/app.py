@@ -295,6 +295,22 @@ async def config_notify(body: NotifyConfig):
     return {"ok": ok, "channel": body.channel}
 
 
+class CredConfig(BaseModel):
+    channel: str
+    field: str          # 仅白名单字段（config.set_channel_cred 校验），如 telegram.token
+    value: str
+
+
+@app.post("/config/cred")
+async def config_cred(body: CredConfig):
+    """向导粘贴渠道凭证：写 config.toml [channel].field（W2）。仅白名单字段，写完整体重载该渠道连接。"""
+    cfg_path = Path(__file__).resolve().parent.parent / "config.toml"
+    ok = config.set_channel_cred(cfg_path, body.channel, body.field, body.value)
+    if ok:
+        config.request_reload_all()   # 凭证变更影响渠道连接，需重起渠道带新值
+    return {"ok": ok}
+
+
 class ProxyConfig(BaseModel):
     enabled: bool
     port: int = 7897

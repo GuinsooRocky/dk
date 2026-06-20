@@ -247,6 +247,48 @@ def set_notify_channel(config_path, channel: str) -> bool:
     return True
 
 
+# 渠道凭证字段白名单：只许写这些键。锁死 key 杜绝经无鉴权 /config/cred 注入任意键
+# （如 [claude].cmd 换成恶意命令）——_toml_str 转义的是值，这里再锁住键名（W2）。
+_CHANNEL_CRED_FIELDS = {
+    "telegram": {"token"},
+    "feishu": {"app_id", "app_secret"},
+    "wecom": {"bot_id", "bot_secret"},
+}
+
+
+def set_channel_cred(config_path, channel: str, field: str, value: str) -> bool:
+    """把 config.toml [channel].field 设成 value（向导粘贴凭证用，W2）。保留排版。
+
+    (channel, field) 必须在白名单内才写，否则拒（返回 False）。value 经 _toml_str 转义。
+    """
+    if field not in _CHANNEL_CRED_FIELDS.get(channel, set()):
+        return False
+    p = Path(config_path)
+    if not p.exists():
+        return False
+    val = f"{field} = {_toml_str(value)}"
+    lines, out, in_sec, done = p.read_text().splitlines(), [], False, False
+    for line in lines:
+        s = line.strip()
+        if s.startswith("["):
+            if in_sec and not done:               # 离开本段仍没写到 → 段内补一行
+                out.append(val); done = True
+            in_sec = (s == f"[{channel}]")
+            out.append(line)
+            continue
+        key_here = s.lstrip("#").strip().split("=", 1)[0].strip()
+        if in_sec and not done and key_here == field:
+            out.append(val); done = True
+            continue
+        out.append(line)
+    if in_sec and not done:                        # [channel] 是最后一段
+        out.append(val); done = True
+    if not done:                                   # 没有 [channel] 段（理论不该；防御）
+        out += ["", f"[{channel}]", val]; done = True
+    p.write_text("\n".join(out) + "\n")
+    return done
+
+
 @dataclass(frozen=True)
 class Config:
     claude_cmd: str

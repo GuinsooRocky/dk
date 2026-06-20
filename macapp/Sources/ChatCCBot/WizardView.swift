@@ -10,6 +10,8 @@ enum WizardStep: Int, CaseIterable {
 @MainActor
 final class WizardModel: ObservableObject {
     @Published var step: WizardStep = .eligibility
+    @Published var channel = "telegram"      // Step2 选中的渠道（决策默认 Telegram-only）
+    @Published var showAdvanced = false      // 「我已有开发者账号」→ 放出飞书/企微（opt-in）
 
     func next() {
         let all = WizardStep.allCases
@@ -24,9 +26,11 @@ final class WizardModel: ObservableObject {
 
 struct WizardView: View {
     @EnvironmentObject var i18n: I18n
+    @EnvironmentObject var model: HubModel
     @Environment(\.openURL) private var openURL
     @StateObject private var wiz = WizardModel()
     @StateObject private var claude = ClaudeCheck()   // Step1 复用：检装没装 / 登没登
+    @State private var token = ""                      // Step3 粘贴的凭证
 
     var body: some View {
         ScrollView {
@@ -36,6 +40,8 @@ struct WizardView: View {
                 switch wiz.step {
                 case .eligibility: eligibilityScreen
                 case .claude: claudeScreen
+                case .channel: channelScreen
+                case .connect: connectScreen
                 case .done: doneScreen
                 default: placeholderScreen
                 }
@@ -43,6 +49,89 @@ struct WizardView: View {
             .padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+
+    // 上一步 / 下一步
+    private func navButtons(canNext: Bool = true) -> some View {
+        HStack(spacing: 10) {
+            Button(i18n.t("wizard.back")) { wiz.back() }
+            Spacer()
+            Button(i18n.t("wizard.next")) { wiz.next() }
+                .buttonStyle(.borderedProminent).disabled(!canNext)
+        }
+    }
+
+    // Step2 渠道选择：默认只给 Telegram（~60s 可过）；飞书/企微藏「我已有开发者账号」后（opt-in）
+    private var channelScreen: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(i18n.t("wizard.channel_title")).dkFont(20, .bold)
+            Text(i18n.t("wizard.channel_body")).dkFont(13).foregroundStyle(.secondary)
+            channelRadio("telegram", "Telegram")
+            Toggle(i18n.t("wizard.advanced"), isOn: $wiz.showAdvanced).toggleStyle(.checkbox)
+            if wiz.showAdvanced {
+                channelRadio("feishu", i18n.t("channel.feishu.name"))
+                channelRadio("wecom", i18n.t("channel.wecom.name"))
+            }
+            navButtons()
+        }
+    }
+
+    private func channelRadio(_ key: String, _ label: String) -> some View {
+        Button {
+            wiz.channel = key
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: wiz.channel == key ? "largecircle.fill.circle" : "circle")
+                    .foregroundStyle(wiz.channel == key ? Color.dkAccent : .secondary)
+                Text(label).dkFont(14)
+            }.contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    // Step3 连接：粘 token 写 config + 实时抓 ID（复用 /pending+/allowlist，替代手 grep 回填）
+    private var connectScreen: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(i18n.t("wizard.connect_title")).dkFont(20, .bold)
+            Text(i18n.t("wizard.token_label")).dkFont(13).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                SecureField(i18n.t("wizard.token_placeholder"), text: $token)
+                    .textFieldStyle(.roundedBorder).frame(maxWidth: 300)
+                Button(i18n.t("wizard.save_token")) {
+                    let field = wiz.channel == "feishu" ? "app_id"
+                              : (wiz.channel == "wecom" ? "bot_id" : "token")
+                    let t = token
+                    Task {
+                        await model.setCred(wiz.channel, field, t)
+                        await model.setEnabled(wiz.channel, true)   // 顺手开启该渠道
+                    }
+                }.disabled(token.isEmpty)
+            }
+            Divider().padding(.vertical, 4)
+            // 实时抓 ID：现在从手机发一条，捕获的发送者渲染成「把【你】加白名单」一点即加
+            Text(i18n.t("wizard.capture_hint")).dkFont(13).foregroundStyle(.secondary)
+            if capturedHere.isEmpty {
+                Text(i18n.t("wizard.no_capture")).dkFont(12).foregroundStyle(.tertiary)
+            } else {
+                ForEach(capturedHere) { p in
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.crop.circle.badge.clock")
+                            .foregroundStyle(Color.dkAccent)
+                        Text(p.user).dkFont(12).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button(i18n.t("wizard.add_me")) {
+                            Task { await model.editAllow(wiz.channel, p.user, "add") }
+                        }.controlSize(.small)
+                    }
+                }
+            }
+            navButtons()
+        }
+        .task { await model.refresh() }   // 拉一次 allowlist+pending（之后靠 model 刷新循环更新）
+    }
+
+    // 当前渠道下「想加入(发过消息但还没放行)」的人 = /allowlist 返回的 pending（来自渠道 /pending 上报）
+    private var capturedHere: [PendingItem] {
+        (model.allowlist?.pending ?? []).filter { $0.channel == wiz.channel }
     }
 
     // Screen0 资格预检：明示前提（付费 Claude 订阅 + 常醒 Mac），按钮不卡转圈

@@ -92,6 +92,15 @@ final class HubModel: ObservableObject {
         await refresh()
     }
 
+    /// 向导粘贴凭证：写 config.toml [channel].field 后刷新（W2）。
+    func setCred(_ channel: String, _ field: String, _ value: String) async {
+        lastError = nil
+        do { try await HubApi.setCred(channel: channel, field: field, value: value) }
+        catch { lastError = "err.action_failed" }
+        try? await Task.sleep(nanoseconds: 1_800_000_000)
+        await refresh()
+    }
+
     /// 清除历史：清空 hub 内存统计 + 刷新（GUARD-4）。
     func clearHistory() async {
         lastError = nil

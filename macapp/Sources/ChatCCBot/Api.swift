@@ -86,6 +86,13 @@ enum HubApi {
         try await post("/config/tools", ToolsConfig(tools: tools))
     }
 
+    struct CredConfig: Encodable { let channel: String; let field: String; let value: String }
+
+    /// 向导粘贴渠道凭证：写 config.toml [channel].field（仅白名单字段，W2）。
+    static func setCred(channel: String, field: String, value: String) async throws {
+        try await post("/config/cred", CredConfig(channel: channel, field: field, value: value))
+    }
+
     static func allowlist() async throws -> AllowlistResp {
         try await get("/allowlist", as: AllowlistResp.self)
     }

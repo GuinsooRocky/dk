@@ -306,6 +306,11 @@ def check_wizard_skeleton():
         problems.append("缺 WizardStep 状态机")
     if "ClaudeCheck" not in src:
         problems.append("Step1 没复用 ClaudeCheck")
+    # W2：Step2 渠道选择 + Step3 连接（实时抓 ID 复用 /allowlist+/pending）
+    if "channelScreen" not in src or "connectScreen" not in src:
+        problems.append("缺 Step2/Step3 屏")
+    if "allowlist" not in src or "pending" not in src:
+        problems.append("Step3 没接 /allowlist+/pending 实时抓 ID")
     return (not problems), ("向导骨架就位" if not problems else "; ".join(problems))
 
 
