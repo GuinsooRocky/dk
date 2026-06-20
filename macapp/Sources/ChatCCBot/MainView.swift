@@ -26,7 +26,7 @@ struct MainView: View {
                 switch tab {
                 case 0: ChannelsView()
                 case 1: SettingsView()
-                default: OnboardingView()
+                default: WizardView()   // §4.1 多步向导取代静态 OnboardingView（W1 起）
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)

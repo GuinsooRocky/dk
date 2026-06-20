@@ -96,7 +96,7 @@
   - 验收：smoke 绿 + 加 `check_fair_queue`：断言 hub 有队列结构 + 位次计算 + FIFO 取出；runner Slots 单飞语义未变。
   - 决策默认：队列深 5、入队超时 10min、不主动「轮到你了」推送（入队给位次即可）。
 
-- [ ] **W1 · §4 向导 骨架 + Screen0 资格预检 + Step1 Claude 三态门**
+- [x] **W1 · §4 向导 骨架 + Screen0 资格预检 + Step1 Claude 三态门**
   - 做什么：把静态 `OnboardingView` 升级成多步交互向导（战略 §4.1）。本任务建状态机骨架 + 前两屏。
   - 怎么做：① 新建向导状态机（`enum WizardStep`：eligibility/claude/channel/connect/perms/runmode/done）+ 容器视图包裹/替换现有 `OnboardingView`（旧静态内容退役只加注释不删）。② Screen0 资格预检：明示「需付费 Claude 订阅 + 常醒 Mac」，给「有/帮我开通」不卡转圈。③ Step1：复用 `ClaudeCheck.swift` 检装没装/登没登，未过不放行，每探针 60s 超时 + 兜底文案。
   - 验收：swift build 过 + 加 `check_wizard_skeleton`：断言存在 WizardStep 状态机 + 复用 ClaudeCheck。**视觉/流程对不对留 visual-qa 人工收尾**（见文末）。

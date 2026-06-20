@@ -1,5 +1,7 @@
 import SwiftUI
 
+// 退役中：被 WizardView 多步向导取代作引导入口（§4.1，W1 起）。暂留不删——
+// GuideBlock 的三渠道加机器人说明 W2 的连接步会复用，删了可惜（no-auto-delete）。
 // 说明 tab：真文档。简介 + 三个渠道各自的加机器人步骤（整块可点展开）。
 struct OnboardingView: View {
     @EnvironmentObject var i18n: I18n

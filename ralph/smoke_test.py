@@ -290,6 +290,25 @@ def check_fair_queue():
     return (not problems), ("公平队列就位" if not problems else "; ".join(problems))
 
 
+def check_wizard_skeleton():
+    """不变量 13：§4 向导骨架就位（W1，W2/W3 续扩）。macapp 不存在跳过。
+
+    存在 WizardStep 状态机 + 向导复用 ClaudeCheck。视觉/流程对不对留 visual-qa 人工收尾。
+    """
+    if not (ROOT / "macapp" / "Package.swift").exists():
+        return True, "无 macapp，跳过"
+    p = ROOT / "macapp/Sources/ChatCCBot/WizardView.swift"
+    if not p.exists():
+        return False, "缺 WizardView.swift"
+    src = p.read_text(encoding="utf-8")
+    problems = []
+    if "enum WizardStep" not in src:
+        problems.append("缺 WizardStep 状态机")
+    if "ClaudeCheck" not in src:
+        problems.append("Step1 没复用 ClaudeCheck")
+    return (not problems), ("向导骨架就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -303,6 +322,7 @@ CHECKS = [
     ("health      渠道鉴权探针", check_health_probe),
     ("ratelimit   出站限速器", check_ratelimit),
     ("fair-queue  公平队列", check_fair_queue),
+    ("wizard      §4 向导骨架", check_wizard_skeleton),
 ]
 
 
