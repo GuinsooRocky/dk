@@ -26,7 +26,7 @@
 
 ## 待办
 
-- [ ] **V1 · 语音模型缺失时自动下载**（`core/transcribe/sensevoice.py`）
+- [x] **V1 · 语音模型缺失时自动下载**（`core/transcribe/sensevoice.py`）
   - 做什么：现在模型缺失直接 `raise FileNotFoundError`（sensevoice.py:28）。改成「**有就用、缺才下**」：按顺序找，全找不到才从 HuggingFace 懒下载一次。本机有 MK 模型 → 永不触发下载。
   - 怎么做：① 新增 `_resolve_dir()` 查找顺序，命中即用不下载：`SENSEVOICE_DIR` 环境变量 → MK 目录 `~/.mk/models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17` → DK 目录 `~/.dk/models/<同名>`。② 三处都缺 `model.int8.onnx`/`tokens.txt` → 新增 `_ensure_model()` 从 HuggingFace 下载到 **DK 目录**（不写 MK 地盘，DK/MK 解耦）；用 stdlib `urllib`，**不新增重依赖**；失败给清晰报错（保留现有手动设 SENSEVOICE_DIR 兜底文案）。③ `_recognizer()` 缺模型分支从 raise 改成「先 `_ensure_model()` 再加载」。④ 删源码里「分发到没 MK… 或后续加自动下载」那句注释（已兑现）。
   - 验收：smoke 绿 + 在 `smoke_test.py` 加 `check_voice_autodownload`：断言 sensevoice.py 含 `_ensure_model`（或等价下载函数）且 `_recognizer` 缺模型分支不再是裸 raise。**不真跑下载**（228MB，留人工验收）。

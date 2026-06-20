@@ -120,12 +120,37 @@ def check_swift_build():
     return False, "swift build 失败: " + " | ".join(tail)
 
 
+def check_voice_autodownload():
+    """不变量 6：语音模型缺失走自动下载、不再裸 raise（V1）。
+
+    结构断言：sensevoice 有 _ensure_model 下载函数，且 _recognizer 经它取模型
+    （缺模型不再当场 FileNotFoundError）。不真跑下载（228MB，留人工验收）。
+    """
+    src = (ROOT / "core/transcribe/sensevoice.py").read_text(encoding="utf-8")
+    problems = []
+    if "_ensure_model" not in src:
+        problems.append("缺自动下载函数 _ensure_model")
+    tree = ast.parse(src)
+    rec_fn = next((n for n in ast.walk(tree)
+                   if isinstance(n, ast.FunctionDef) and n.name == "_recognizer"), None)
+    if rec_fn is None:
+        problems.append("找不到 _recognizer")
+    else:
+        body = ast.get_source_segment(src, rec_fn) or ""
+        if "_ensure_model" not in body:
+            problems.append("_recognizer 没走 _ensure_model")
+        if any(isinstance(n, ast.Raise) for n in ast.walk(rec_fn)):
+            problems.append("_recognizer 仍裸 raise（缺模型应交给 _ensure_model 下载）")
+    return (not problems), ("语音自动下载就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
     ("lazy-voice  语音可选", check_lazy_transcribe),
     ("hub-api     承重 endpoint", check_hub_endpoints),
     ("swift-app   macapp 编译", check_swift_build),
+    ("voice-dl    语音缺失自动下载", check_voice_autodownload),
 ]
 
 
