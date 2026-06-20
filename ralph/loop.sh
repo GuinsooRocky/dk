@@ -32,13 +32,12 @@ while [ "$ITER" -lt "$MAX" ]; do
   # 全新 context、headless 喂 PROMPT;claude 自己读 fix_plan 挑活
   cat ralph/PROMPT.md | claude -p --dangerously-skip-permissions 2>&1 | tee -a ralph/loop.log
 
-  # 收工条件:「待办」里没有未打勾任务了
+  # 收工条件:「待办」里没有未打勾任务了(- [⚠] 跳过项不算待办)
   if ! grep -q '^- \[ \]' ralph/fix_plan.md; then
-    echo "✅ fix_plan 无待办,Ralph 收工(共 $ITER 轮)"; exit 0
-  fi
-  # 卡住条件:本轮留下了 ⚠ → 停,等人看
-  if tail -3 ralph/fix_plan.md | grep -q '⚠ 卡住'; then
-    echo "⛔ Ralph 卡住,已停,看 fix_plan 末尾原因"; exit 1
+    SKIPPED=$(grep -c '^- \[⚠\]' ralph/fix_plan.md)
+    echo "✅ fix_plan 无待办,Ralph 收工(共 $ITER 轮)"
+    [ "$SKIPPED" -gt 0 ] && echo "⚠ 有 $SKIPPED 个任务被跳过(- [⚠]),搜 '⚠ 卡住' 看原因,留给你手动处理。"
+    exit 0
   fi
   sleep 2
 done
