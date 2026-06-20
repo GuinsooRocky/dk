@@ -15,7 +15,7 @@ from pathlib import Path
 
 # ---- 复用 core 的去重/分段/白名单 + Hub 客户端 + 语音转写 ----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, security, dedup, chunking, hub_client, replies  # noqa: E402
+from core import config, security, dedup, chunking, hub_client, replies, ratelimit  # noqa: E402
 
 from telegram import Update  # noqa: E402
 from telegram.ext import Application, MessageHandler, filters, ContextTypes  # noqa: E402
@@ -92,6 +92,11 @@ async def _respond(context, chat_id: str, sender: str, text: str, heard: str = "
     chunks = chunking.split_chunks(answer, MAX_TG_MSG)
     for i, c in enumerate(chunks, 1):
         body = c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}"
+        # 出站限速（R1）：超限**异步**等令牌，绝不阻塞事件循环（不能用阻塞 acquire）
+        waited = 0.0
+        while not ratelimit.try_acquire("telegram") and waited < 30:
+            await asyncio.sleep(0.5)
+            waited += 0.5
         try:   # 单段失败不中断后续段（否则已发半条+剩余永久丢）
             if i == 1:
                 await context.bot.edit_message_text(

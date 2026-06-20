@@ -20,7 +20,7 @@ from pathlib import Path
 
 # ---- 引入跨渠道 core（core/ 在仓库根目录，与 feishu-claude 同款引法）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, security, dedup, chunking, hub_client, replies  # noqa: E402
+from core import config, security, dedup, chunking, hub_client, replies, ratelimit  # noqa: E402
 
 from wecom_aibot_sdk import WSClient, WSClientOptions  # noqa: E402
 
@@ -118,6 +118,7 @@ def _process(reply, sender: str, chat_id: str, text: str) -> None:
     answer = resp.get("text") or replies.NO_REPLY
     chunks = chunking.split_chunks(answer, MAX_WECOM_MSG)
     for i, c in enumerate(chunks, 1):
+        ratelimit.acquire("wecom")   # 出站限速（R1），超限排队不静默吞
         try:   # 单段失败不中断后续段（否则已发半条+剩余永久丢，且 dedup 已记账不重投）
             reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
         except Exception:

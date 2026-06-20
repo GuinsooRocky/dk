@@ -83,7 +83,7 @@
   - 验收：smoke 绿 + 加 `check_health_probe`：断言 hub 有周期探针 + `/supervisor` 输出含 auth_ok + 三渠道各有探针分支。
   - 决策默认：探针间隔 5min；wecom 走 is_authenticated 上报（无独立 API）。
 
-- [ ] **R1 · 出站限速器（token-bucket）**
+- [x] **R1 · 出站限速器（token-bucket）**
   - 做什么：给所有出站发送加限速，防刷屏/撞平台频控。战略 §12 说当前规模用不上——按你要求做，默认宽松不挡正常用量。
   - 怎么做：① 新增 `core/ratelimit.py`：per-channel token-bucket，`try_acquire(channel)→bool`，超限排队不静默吞。② 应用到出站点：各渠道分块回复循环（wecom_ws_server.py:122 等）+ N-M0 的飞书/TG notify pusher。
   - 验收：smoke 绿 + 加 `check_ratelimit`：断言 `core/ratelimit.py` 存在含 token-bucket + 被 notify pusher 和分块回复引用。

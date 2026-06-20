@@ -15,7 +15,7 @@ from urllib import request as urlreq
 
 # ---- 引入跨渠道 core（core/ 在仓库根目录）----
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from core import config, security, dedup, chunking, hub_client, replies  # noqa: E402
+from core import config, security, dedup, chunking, hub_client, replies, ratelimit  # noqa: E402
 
 # ---- 加载 .env + 配置 ----
 config.load_env(config.channel_env_path("feishu"))
@@ -162,6 +162,7 @@ def process(reply, sender: str, chat_id: str, text: str) -> None:
     answer = resp.get("text") or replies.NO_REPLY
     chunks = chunking.split_chunks(answer, MAX_FEISHU_MSG)
     for i, c in enumerate(chunks, 1):
+        ratelimit.acquire("feishu")   # 出站限速（R1），超限排队不静默吞
         try:   # 单段失败不中断后续段（否则已发半条+剩余永久丢，且 dedup 已记账不重投）
             reply(c if len(chunks) == 1 else f"[{i}/{len(chunks)}] {c}")
         except Exception:

@@ -19,7 +19,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-from core import config
+from core import config, ratelimit
 
 ROUTES_PATH = config.runtime_dir() / "notify_routes.json"
 TOKEN_PATH = config.runtime_dir() / ".notify_token"
@@ -148,6 +148,7 @@ def push_feishu(text: str) -> dict:
     script = root / "feishu-claude" / "feishu_send.py"
     if not py.exists():
         return {"ok": False, "reason": f"飞书 venv 不存在：{py}"}
+    ratelimit.acquire("feishu")   # 出站限速（R1），超限排队不静默吞
     try:
         r = subprocess.run([str(py), str(script), "--raw", text],
                            capture_output=True, text=True, timeout=20)
@@ -184,6 +185,7 @@ def push_telegram(text: str, chat_id: str) -> dict:
         return {"ok": False, "reason": "未配 [telegram].token"}
     if not chat_id:
         return {"ok": False, "reason": "缺真实 chat_id（注册时未抓到目标，拒发以防串台）"}
+    ratelimit.acquire("telegram")   # 出站限速（R1），超限排队不静默吞
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     data = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
     req = urllib.request.Request(

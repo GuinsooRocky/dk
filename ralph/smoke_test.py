@@ -248,6 +248,29 @@ def check_health_probe():
     return (not problems), ("鉴权探针就位" if not problems else "; ".join(problems))
 
 
+def check_ratelimit():
+    """不变量 11：出站限速器就位（R1）。
+
+    core/ratelimit.py 有 token-bucket，且被 notify pusher + 三渠道分块回复都引用（parity）。
+    """
+    problems = []
+    rl = ROOT / "core/ratelimit.py"
+    if not rl.exists():
+        problems.append("缺 core/ratelimit.py")
+    else:
+        s = rl.read_text(encoding="utf-8")
+        if "TokenBucket" not in s or "try_acquire" not in s:
+            problems.append("ratelimit 缺 token-bucket/try_acquire")
+    if "ratelimit" not in (ROOT / "hub/notify.py").read_text(encoding="utf-8"):
+        problems.append("notify pusher 没用 ratelimit")
+    for ch, f in (("telegram", "telegram/telegram_bot.py"),
+                  ("feishu", "feishu-claude/feishu_common.py"),
+                  ("wecom", "wecom/wecom_ws_server.py")):
+        if "ratelimit" not in (ROOT / f).read_text(encoding="utf-8"):
+            problems.append(f"{ch} 分块回复没接 ratelimit")
+    return (not problems), ("出站限速器就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -259,6 +282,7 @@ CHECKS = [
     ("notify-hook hook+注册CLI", check_notify_hook),
     ("trust-tier  渠道信任分级", check_trust_tier),
     ("health      渠道鉴权探针", check_health_probe),
+    ("ratelimit   出站限速器", check_ratelimit),
 ]
 
 
