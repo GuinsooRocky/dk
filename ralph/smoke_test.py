@@ -182,6 +182,11 @@ def check_notify_hook():
             problems.append("hook 没查 CHATCC_SUPERVISED")
         if "sys.exit(0)" not in h:
             problems.append("hook 没保证 exit 0")
+        # N-M3：容残 transcript 解析器 + 降级文案常量
+        if "parse_transcript" not in h:
+            problems.append("hook 缺 transcript 解析器")
+        if "摘要不可用" not in h:
+            problems.append("hook 缺残读降级文案")
     watch = ROOT / "hub/watch.py"
     if not watch.exists():
         problems.append("缺 hub/watch.py")

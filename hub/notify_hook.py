@@ -47,8 +47,73 @@ def _is_bot_workdir(cwd: str) -> bool:
 
 
 def _status_from(reason: str) -> str:
-    """reason → ok/error 的最粗启发式（N-M3 再做 transcript 容错解析细化）。"""
+    """reason → ok/error 的**启发式**（N-M3）。注意：clear/logout/other 无法干净映射成败，
+    一律当 ok —— status 是猜的、未必精确（NotifyIn.status 注释亦标注此事）。"""
     return "error" if (reason or "").lower() in ("error", "failure", "failed") else "ok"
+
+
+# N-M3：transcript 解析 + 容错。transcript 可能正被写/写一半（§5 P2），整体抽不出就降级。
+DEGRADED_SUMMARY = "completed（摘要不可用）"
+
+
+def _assistant_text(message: dict) -> str:
+    """从一条 assistant 记录里抠出纯文本（content 可能是 str 或 block 列表）。"""
+    content = (message or {}).get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = [b.get("text", "") for b in content
+                 if isinstance(b, dict) and b.get("type") == "text"]
+        return "\n".join(p for p in parts if p)
+    return ""
+
+
+def _duration_sec(first_ts, last_ts) -> float:
+    if not first_ts or not last_ts:
+        return 0.0
+    try:
+        from datetime import datetime
+        a = datetime.fromisoformat(str(first_ts).replace("Z", "+00:00"))
+        b = datetime.fromisoformat(str(last_ts).replace("Z", "+00:00"))
+        return max(0.0, (b - a).total_seconds())
+    except Exception:
+        return 0.0
+
+
+def parse_transcript(path: str) -> dict:
+    """容忍残读的 JSONL 解析：抽 summary(最后一条 assistant 文本) / turns / duration。
+
+    逐行 try/except 跳过坏行（写一半/被锁），绝不让解析崩掉 hook。整体读不到/抽不出
+    → summary 降级成 DEGRADED_SUMMARY。返回 {summary, turns, duration_sec}。
+    """
+    fallback = {"summary": DEGRADED_SUMMARY, "turns": 0, "duration_sec": 0.0}
+    try:
+        lines = Path(path).read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception:
+        return fallback
+    summary, turns, first_ts, last_ts = "", 0, None, None
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except Exception:
+            continue   # 残行/写一半 → 跳过，不崩整体
+        ts = obj.get("timestamp")
+        if ts:
+            first_ts = first_ts or ts
+            last_ts = ts
+        if obj.get("type") == "assistant":
+            turns += 1
+            text = _assistant_text(obj.get("message") or {})
+            if text:
+                summary = text   # 留最后一条非空 assistant 文本当摘要
+    return {
+        "summary": (summary.strip() or DEGRADED_SUMMARY),
+        "turns": turns,
+        "duration_sec": _duration_sec(first_ts, last_ts),
+    }
 
 
 def run() -> None:
@@ -73,11 +138,18 @@ def run() -> None:
         token = TOKEN_PATH.read_text(encoding="utf-8").strip()
     except Exception:
         token = ""
+    tp = ev.get("transcript_path") or ""
+    parsed = parse_transcript(tp) if tp else {"summary": DEGRADED_SUMMARY, "turns": 0, "duration_sec": 0.0}
+    summary = parsed["summary"]
+    if len(summary) > 500:   # IM 消息别太长，截断
+        summary = summary[:500] + "…"
     payload = {
         "session_id": sid,
         "status": _status_from(ev.get("reason") or ev.get("end_reason") or ""),
-        "summary": "",   # N-M3 从 transcript 解析填充
+        "summary": summary,
         "cwd": cwd,
+        "duration_sec": parsed["duration_sec"],
+        "turns": parsed["turns"],
     }
     req = urllib.request.Request(
         f"{HUB_URL}/notify",

@@ -46,7 +46,7 @@
   - 怎么做：① `hub/notify_hook.py`（~50 行）：读 stdin JSON → **P0 缓解先行**（cwd 在 CFG.work_dir/`~/claude-*-workdir` 树下 → 立刻 exit 0；带 `CHATCC_SUPERVISED=1` → exit 0，双保险排除 bot 自起进程）→ 查 notify_routes.json 没注册 → exit 0 → 命中才带 `X-Notify-Token` POST /notify。**永远 exit 0**，httpx `trust_env=False`。② `hub/watch.py` register/unregister：**内容指纹认 session_id，绝不用 mtime**（memory 铁律，mtime 会抓到并发的 bot 自己会话）；register 时存真实 target（TG 的 effective_chat.id）。③ 把 SessionEnd hook 装进 `~/.claude/settings.json` **不在 loop 内自动改**（动全局配置该归 harness）——写进文末人工验收；loop 只把 notify_hook.py 备好。
   - 验收：smoke 绿 + 加 `check_notify_hook`：断言 notify_hook.py 含 work_dir 排除 + CHATCC_SUPERVISED 检查 + 始终 exit 0；watch.py 含 register/unregister 且**不含**按 mtime 排序认 session（grep 反向断言）。
 
-- [ ] **N-M3 · transcript 解析 + 容错**
+- [x] **N-M3 · transcript 解析 + 容错**
   - 做什么：从 transcript 解析 状态/摘要/轮数/用时，容忍写一半（提案 §6 M3 / §5 P2）。
   - 怎么做：容忍残读的 JSONL 解析器（被 notify_hook.py 调用）；解析不出 → 降级文案「completed（摘要不可用）」；`end_reason→ok/error` 启发式并标注是启发式。
   - 验收：smoke 绿 + `check_notify_hook` 扩断言解析器存在且有残读降级分支（含降级文案常量）。
