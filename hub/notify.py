@@ -88,6 +88,27 @@ def get_route(session_id: str):
     return load_routes().get(session_id)
 
 
+ROUTE_TTL_SEC = 24 * 3600
+
+
+def purge_stale_routes(max_age_sec: float = ROUTE_TTL_SEC) -> int:
+    """清掉注册超过 max_age_sec 的残留路由行（session 崩了没走 SessionEnd 的兜底，N-M6）。
+
+    一次性生命周期下正常路由在 SessionEnd 即被消费，这里只扫崩溃残留，保证注册表不无限长。
+    返回清掉的条数。
+    """
+    routes = load_routes()
+    if not routes:
+        return 0
+    now = time.time()
+    keep = {sid: row for sid, row in routes.items()
+            if now - float(row.get("registered_at", 0) or 0) < max_age_sec}
+    removed = len(routes) - len(keep)
+    if removed:
+        save_routes(keep)
+    return removed
+
+
 def is_bot_workdir(cwd: str) -> bool:
     """cwd 落在 bot 自己的 work_dir 树下（~/claude-*-workdir）→ 是 bot 自起的 claude。
 

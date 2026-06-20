@@ -30,7 +30,7 @@ CONTRACT_MARKERS = ("from core import", "load_env", "hub_client")
 
 # Hub 是唯一承重后端,v1 这些 endpoint 必须在(状态可见化的命脉)。
 HUB_FILE = "hub/app.py"
-REQUIRED_ENDPOINTS = ("/chat", "/status", "/supervisor", "/health")
+REQUIRED_ENDPOINTS = ("/chat", "/status", "/supervisor", "/health", "/notify")
 
 
 def _iter_py():
@@ -159,9 +159,12 @@ def check_notify_endpoint():
         "X-Notify-Token 校验": "x_notify_token" in src or "X-Notify-Token" in src,
         "403 拒绝": "403" in src,
         ".notify_token 0600": ".notify_token" in nfy and "0o600" in nfy,
+        # N-M6：24h 残留清扫 + runner 回调默认关
+        "24h 路由清扫": "purge_stale_routes" in nfy,
+        "runner 回调默认关": "DK_RUNNER_NOTIFY" in (ROOT / "core/runner.py").read_text(encoding="utf-8"),
     }
     missing = [k for k, ok in need.items() if not ok]
-    return (not missing), ("出站通知端点+鉴权齐" if not missing else "缺 " + ", ".join(missing))
+    return (not missing), ("出站通知端点+鉴权+收尾齐" if not missing else "缺 " + ", ".join(missing))
 
 
 def check_notify_hook():

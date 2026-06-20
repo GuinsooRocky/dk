@@ -51,7 +51,7 @@
   - 怎么做：容忍残读的 JSONL 解析器（被 notify_hook.py 调用）；解析不出 → 降级文案「completed（摘要不可用）」；`end_reason→ok/error` 启发式并标注是启发式。
   - 验收：smoke 绿 + `check_notify_hook` 扩断言解析器存在且有残读降级分支（含降级文案常量）。
 
-- [ ] **N-M6 · 收尾**（清扫 + smoke 纳入 + runner 回调）
+- [x] **N-M6 · 收尾**（清扫 + smoke 纳入 + runner 回调）
   - 做什么：提案 §6 M6 收尾三件。
   - 怎么做：① notify_routes.json >24h 残留行清扫（hub 启动或 /notify 时顺扫）。② **把 `/notify` 加进 `ralph/smoke_test.py` 的 `REQUIRED_ENDPOINTS`**（此时已实现，加了不红）。③ 路径 B（决策③）：`core/runner.py` `_run_cli` 返回后回调 /notify，**默认关**（config 开关），避免和 hook 注册表打架（§5 P0 第4点 来源互斥）。
   - 验收：smoke 绿（REQUIRED_ENDPOINTS 已含 /notify）+ runner 回调有「默认关」开关守卫。

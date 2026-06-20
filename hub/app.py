@@ -419,6 +419,7 @@ async def stats_insights(days: int = 7):
 def main() -> None:
     stats_db.purge_older_than()   # 保留策略：每次起 hub 清掉超 90 天的行(B4，§8.4)
     notify_mod.ensure_token()     # 先把 .notify_token(0600) 备好，供 hook/runner 回调读(N-M2)
+    notify_mod.purge_stale_routes()   # 清掉 >24h 残留路由行(崩溃没注销的兜底，N-M6)
     log.info("=" * 60)
     log.info("Hub 启动  http://%s:%d  引擎=%s 工具=%s 单飞=%d",
              HOST, PORT, CFG.engine, CFG.allowed_tools, CFG.max_concurrency)

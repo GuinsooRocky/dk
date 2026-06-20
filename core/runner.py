@@ -44,7 +44,42 @@ def run_claude(cfg, full_prompt: str, work_dir, resume_session: str = "") -> dic
         log.info("会话 %s… 已失效，开新会话重试本条", resume_session[:8])
         result = fn(cfg, full_prompt, work_dir, "")
         result["reset_notice"] = True
+    _maybe_notify(result)   # 路径 B 回调（N-M6，**默认关**）
     return result
+
+
+def _maybe_notify(result: dict) -> None:
+    """路径 B（提案 §6 M6 决策③）：bot 自起的跑跑完回调 hub /notify。**默认关**。
+
+    置 DK_RUNNER_NOTIFY=1 才开。默认关是为了和 SessionEnd hook 注册表互斥——hook 管交互式
+    跑、runner 回调管 bot 自起跑（§5 P0 第4点：同 session 只能一条路径负责，否则双触发）。
+    fire-and-forget + stdlib + 直连不走代理，绝不影响主流程；core 不依赖 hub，自带 POST。
+    """
+    import os
+    if os.getenv("DK_RUNNER_NOTIFY", "") not in ("1", "true", "True"):
+        return   # 默认关
+    def _post():
+        try:
+            import json as _json
+            import urllib.request as _u
+            from pathlib import Path as _P
+            try:
+                token = (_P.home() / ".chat-cc-bot" / ".notify_token").read_text(encoding="utf-8").strip()
+            except OSError:
+                token = ""
+            hub = os.getenv("HUB_URL", "http://127.0.0.1:8787").rstrip("/")
+            payload = {
+                "session_id": result.get("session_id") or "runner",
+                "status": "ok" if result.get("ok") else "error",
+                "summary": (result.get("text") or "")[:500],
+            }
+            req = _u.Request(f"{hub}/notify", data=_json.dumps(payload).encode("utf-8"),
+                             method="POST",
+                             headers={"Content-Type": "application/json", "X-Notify-Token": token})
+            _u.build_opener(_u.ProxyHandler({})).open(req, timeout=5).read()
+        except Exception:
+            pass
+    threading.Thread(target=_post, daemon=True).start()
 
 
 def _effective_tools(cfg) -> str:
