@@ -58,6 +58,17 @@ struct HubStats: Codable {
     var last_text: String
 }
 
+// /stats/insights 的持久化用量（SQLite，过去 N 天，跨重启存活）。B4。
+struct Insights: Codable {
+    var days: Int
+    var total: Int
+    var ok: Int
+    var err: Int
+    var by_user: [String: Int]
+    var by_channel: [String: Int]
+    var per_day: [String: Int]
+}
+
 // MARK: - 渠道展示元数据（名称/定位走 i18n key，按 channel.<key>.name / .note 取）
 
 struct ChannelMeta {

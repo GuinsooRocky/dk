@@ -7,6 +7,7 @@ final class HubModel: ObservableObject {
     @Published var supervisor: SupervisorStatus?
     @Published var hubStatus: HubStatus?
     @Published var stats: HubStats?
+    @Published var insights: Insights?   // 持久化用量(过去 7 天，跨重启)，B4
     @Published var allowlist: AllowlistResp?
     @Published var reachable = false   // 后端在跑且 ok:true 才为真（诚实降级用）
     @Published var busy = false        // hub 当前在跑 claude（菜单栏图标用）
@@ -78,6 +79,7 @@ final class HubModel: ObservableObject {
         hubStatus = try? await HubApi.status()
         busy = hubStatus?.busy ?? false
         stats = try? await HubApi.stats()   // 用量；拉不到不影响渠道显示
+        insights = try? await HubApi.insights()   // 持久化用量(过去 7 天)，B4
         allowlist = try? await HubApi.allowlist()
     }
 

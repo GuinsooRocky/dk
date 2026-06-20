@@ -47,22 +47,33 @@ struct ChannelsView: View {
         }
     }
 
-    // 用量摘要（合并自原用量 tab，紧凑一卡）
+    // 用量摘要：过去 7 天持久化数据（SQLite，跨重启存活）。B4。
     private var usageCard: some View {
-        let s = model.stats
+        let ins = model.insights
         let up = model.hubStatus?.uptime_sec ?? 0
-        return HStack(spacing: DKSpace.xl) {
-            usageMetric("\(s?.total ?? 0)", i18n.t("insights.total_label"))
-            usageMetric(uptimeStr(up), i18n.t("insights.uptime_label"))
-            Spacer()
-            HStack(spacing: DKSpace.sm) {
-                usagePill(.dkGreen, i18n.t("insights.ok", s?.ok ?? 0))
-                usagePill(.dkRed, i18n.t("insights.err", s?.err ?? 0))
+        let top = ins?.by_user.max { $0.value < $1.value }
+        return VStack(alignment: .leading, spacing: DKSpace.sm) {
+            HStack(spacing: DKSpace.xl) {
+                usageMetric("\(ins?.total ?? 0)", i18n.t("insights.total_label"))
+                usageMetric(uptimeStr(up), i18n.t("insights.uptime_label"))
+                Spacer()
+                HStack(spacing: DKSpace.sm) {
+                    usagePill(.dkGreen, i18n.t("insights.ok", ins?.ok ?? 0))
+                    usagePill(.dkRed, i18n.t("insights.err", ins?.err ?? 0))
+                }
+            }
+            if let top, top.value > 0 {
+                Text("\(i18n.t("insights.most_active")) · \(shortId(top.key)) · \(top.value)")
+                    .dkFont(11).foregroundStyle(.tertiary)
             }
         }
         .padding(DKSpace.lg)
         .frame(maxWidth: .infinity, alignment: .leading)
         .dkCard()
+    }
+
+    private func shortId(_ s: String) -> String {
+        s.count > 10 ? "…" + s.suffix(6) : s
     }
 
     private func usageMetric(_ v: String, _ label: String) -> some View {

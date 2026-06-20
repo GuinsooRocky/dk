@@ -375,6 +375,7 @@ async def stats_insights(days: int = 7):
 
 
 def main() -> None:
+    stats_db.purge_older_than()   # 保留策略：每次起 hub 清掉超 90 天的行(B4，§8.4)
     log.info("=" * 60)
     log.info("Hub 启动  http://%s:%d  引擎=%s 工具=%s 单飞=%d",
              HOST, PORT, CFG.engine, CFG.allowed_tools, CFG.max_concurrency)

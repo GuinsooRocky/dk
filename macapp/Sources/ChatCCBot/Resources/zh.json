@@ -57,8 +57,8 @@
 
   "insights.ok": "成功 %d",
   "insights.err": "失败 %d",
-  "insights.resets": "重启后重新计数",
-  "insights.total_label": "累计调用",
+  "insights.resets": "过去 7 天 · 跨重启存活",
+  "insights.total_label": "过去 7 天",
   "insights.uptime_label": "已运行",
   "insights.just_started": "刚启动",
   "insights.empty_title": "还没有对话",

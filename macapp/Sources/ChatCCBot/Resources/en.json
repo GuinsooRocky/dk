@@ -57,8 +57,8 @@
 
   "insights.ok": "%d ok",
   "insights.err": "%d failed",
-  "insights.resets": "Resets on restart",
-  "insights.total_label": "Total runs",
+  "insights.resets": "Past 7 days · survives restart",
+  "insights.total_label": "Past 7 days",
   "insights.uptime_label": "Uptime",
   "insights.just_started": "just started",
   "insights.empty_title": "No activity yet",

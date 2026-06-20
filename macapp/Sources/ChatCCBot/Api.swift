@@ -62,6 +62,9 @@ enum HubApi {
     static func stats() async throws -> HubStats {
         try await get("/stats", as: HubStats.self)
     }
+    static func insights(days: Int = 7) async throws -> Insights {
+        try await get("/stats/insights?days=\(days)", as: Insights.self)
+    }
 
     struct ChannelToggle: Encodable { let name: String; let enabled: Bool }
 
