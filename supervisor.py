@@ -22,9 +22,12 @@ try:
 except ModuleNotFoundError:
     print("需要 Python 3.11+（tomllib）"); sys.exit(1)
 
-ROOT = Path(__file__).resolve().parent
-sys.path.insert(0, str(ROOT))
+_HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(_HERE))
 from core import config as core_config  # noqa: E402
+
+FROZEN = getattr(sys, "frozen", False)   # PyInstaller sidecar 打包后为 True
+ROOT = core_config.app_root()            # frozen=DK_ROOT(launchd 注入)；dev=仓库根
 
 CONFIG = ROOT / "config.toml"
 STATUS_PATH = core_config.supervisor_status_path()
@@ -46,7 +49,13 @@ def _venv_py(sub: str) -> str:
 
 
 def _find_certifi(venv_pythons) -> str:
-    """本机系统 CA 坏（链里有自签名证书）→ 找一个 venv 里的 certifi 干净证书包，给子进程统一用。"""
+    """本机系统 CA 坏（链里有自签名证书）→ 找一个 certifi 干净证书包，给子进程统一用。"""
+    if FROZEN:
+        try:
+            import certifi
+            return certifi.where()   # bundle 内自带 certifi
+        except Exception:
+            return ""
     for py in venv_pythons:
         try:
             r = subprocess.run([py, "-m", "certifi"], capture_output=True, text=True, timeout=10)
@@ -122,6 +131,11 @@ def channel_meta(cfg: dict) -> list:
     ]
 
 
+def _cmd(mode: str, dev_cmd: list) -> list:
+    """frozen → 本 sidecar 二进制 + 模式名；dev → 渠道 venv python。"""
+    return [sys.executable, mode] if FROZEN else dev_cmd
+
+
 def build_components(cfg: dict) -> list:
     claude = cfg.get("claude", {})
     hub_port = cfg.get("hub", {}).get("port", 8787)
@@ -151,7 +165,7 @@ def build_components(cfg: dict) -> list:
 
     comps = [{
         "name": "hub",
-        "cmd": [_venv_py("hub"), "-m", "hub.app"],
+        "cmd": _cmd("hub", [_venv_py("hub"), "-m", "hub.app"]),
         "cwd": str(ROOT),
         "env": {**claude_env, **proxy_env},  # hub 跑 claude，要代理
     }]
@@ -160,7 +174,7 @@ def build_components(cfg: dict) -> list:
     if tg.get("enabled"):
         comps.append({
             "name": "telegram",
-            "cmd": [_venv_py("telegram"), str(ROOT / "telegram" / "telegram_bot.py")],
+            "cmd": _cmd("telegram", [_venv_py("telegram"), str(ROOT / "telegram" / "telegram_bot.py")]),
             "cwd": str(ROOT / "telegram"),
             "env": {
                 "TELEGRAM_BOT_TOKEN": tg.get("token", ""),
@@ -176,7 +190,7 @@ def build_components(cfg: dict) -> list:
     if fs.get("enabled"):
         comps.append({
             "name": "feishu",
-            "cmd": [_venv_py("feishu-claude"), str(ROOT / "feishu-claude" / "feishu_ws_server.py")],
+            "cmd": _cmd("feishu", [_venv_py("feishu-claude"), str(ROOT / "feishu-claude" / "feishu_ws_server.py")]),
             "cwd": str(ROOT),
             "env": {
                 "FEISHU_APP_ID": fs.get("app_id", ""), "FEISHU_APP_SECRET": fs.get("app_secret", ""),
@@ -189,7 +203,7 @@ def build_components(cfg: dict) -> list:
     if wc.get("enabled"):
         comps.append({
             "name": "wecom",
-            "cmd": [_venv_py("wecom"), str(ROOT / "wecom" / "wecom_ws_server.py")],
+            "cmd": _cmd("wecom", [_venv_py("wecom"), str(ROOT / "wecom" / "wecom_ws_server.py")]),
             "cwd": str(ROOT),
             "env": {
                 "WECOM_BOT_ID": wc.get("bot_id", ""), "WECOM_BOT_SECRET": wc.get("bot_secret", ""),
@@ -276,6 +290,7 @@ def main() -> None:
     def start(c: dict, st: dict):
         base = {k: v for k, v in os.environ.items() if k not in proxy_keys}
         base["CHATCC_SUPERVISED"] = "1"  # 渠道读 .env 时只补缺，不覆盖这里注入的 config.toml 值
+        base["DK_ROOT"] = str(ROOT)      # 子进程(含 frozen sidecar)据此找 config.toml/.env
         if certifi_path:
             base["SSL_CERT_FILE"] = certifi_path
         # 只注入 config.toml 里有值的项：空字符串别注入，否则会盖住渠道 .env 里的真实凭证
