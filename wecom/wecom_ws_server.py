@@ -91,7 +91,8 @@ def _extract(frame) -> dict:
         # 会话 key：群用 chatid；单聊 chatid 可能为空 → 退回 from_userid
         "chat_id": chatid or sender,
         "chattype": dig(("chattype",), default="single"),
-        "text": dig(("text", "content"), default="").strip(),
+        # 文本，或语音(WeCom 服务端已转写成文字，放 voice.content)——B5
+        "text": dig(("text", "content"), ("voice", "content"), default="").strip(),
     }
 
 

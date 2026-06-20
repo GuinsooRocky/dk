@@ -109,19 +109,30 @@ def on_message(data) -> None:
             fc.hub_client.report_pending("feishu", sender_open_id)   # 实时抓 ID：让 app 显示"想加入"
             return
 
-        if msg.message_type != "text":
-            _send(chat_id, "暂时只支持文本消息")   # 原 _reply 未定义，会抛 NameError
+        if msg.message_type == "audio":   # 语音：下载 + 本地转写（B5）
+            try:
+                fk = json.loads(msg.content or "{}").get("file_key", "")
+                text = fc.transcribe_audio(msg.message_id, fk).strip() if fk else ""
+            except Exception:
+                log.exception("语音转写失败")
+                _send(chat_id, "语音没转成功，再说一次？")
+                return
+            if not text:
+                _send(chat_id, "没听清，再说一次？")
+                return
+        elif msg.message_type != "text":
+            _send(chat_id, "暂时只支持文本和语音消息")
             return
-
-        try:
-            text = json.loads(msg.content or "{}").get("text", "").strip()
-        except json.JSONDecodeError:
-            text = ""
-        for m in (msg.mentions or []):
-            if m.key:
-                text = text.replace(m.key, "").strip()
-        if not text:
-            return
+        else:
+            try:
+                text = json.loads(msg.content or "{}").get("text", "").strip()
+            except json.JSONDecodeError:
+                text = ""
+            for m in (msg.mentions or []):
+                if m.key:
+                    text = text.replace(m.key, "").strip()
+            if not text:
+                return
 
         # 首条"思考中"占位 → 下一条原地编辑成答案（跟 Telegram 一致，不留废消息）
         state = {"mid": None, "first": True}

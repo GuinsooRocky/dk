@@ -75,6 +75,23 @@ def get_tenant_token() -> str:
         return _token_cache["value"]
 
 
+def transcribe_audio(message_id: str, file_key: str) -> str:
+    """下载飞书语音资源 → 本地 SenseVoice 转写（B5）。同步阻塞，调用方丢线程池。
+    懒导入 core.transcribe，让 numpy/sherpa 成语音可选依赖（无语音零成本）。"""
+    import tempfile
+    token = get_tenant_token()
+    url = (f"https://open.feishu.cn/open-apis/im/v1/messages/{message_id}"
+           f"/resources/{file_key}?type=file")
+    req = urlreq.Request(url, headers={"Authorization": f"Bearer {token}"})
+    with urlreq.urlopen(req, timeout=30) as resp:
+        data = resp.read()
+    from core import transcribe   # noqa: E402  懒导入
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "v.ogg"    # 飞书语音是 opus；transcribe 用 ffmpeg 兜格式
+        p.write_bytes(data)
+        return transcribe.transcribe(str(p))
+
+
 # ---- 机器人自身 open_id（失败 10 分钟冷却，避免每条群消息同步阻塞 ack）----
 _bot_id_lock = threading.Lock()
 _bot_id_retry_at = 0.0
