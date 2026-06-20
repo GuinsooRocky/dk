@@ -55,16 +55,44 @@ private struct GuideBlock: View {
             .buttonStyle(.plain)
 
             if expanded {
-                Text(i18n.t(stepsKey))
-                    .dkFont(14)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 10)
-                    .lineSpacing(3)
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(steps.enumerated()), id: \.offset) { _, line in
+                        stepRow(line)
+                    }
+                }
+                .padding(.top, 10)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    // 把 "1. …\n2. …" 拆成清单：编号行带紫色徽章，注释行(注：/提示)带 ⓘ —— 软化多步骤(B6)
+    private var steps: [String] {
+        i18n.t(stepsKey).split(separator: "\n", omittingEmptySubsequences: true).map(String.init)
+    }
+
+    @ViewBuilder
+    private func stepRow(_ raw: String) -> some View {
+        let line = raw.trimmingCharacters(in: .whitespaces)
+        if let dot = line.firstIndex(of: "."), let n = Int(line[line.startIndex..<dot]) {
+            HStack(alignment: .top, spacing: 8) {
+                Text("\(n)").dkFont(11, .bold)
+                    .frame(width: 18, height: 18)
+                    .background(Circle().fill(Color.dkAccent.opacity(0.15)))
+                    .foregroundStyle(Color.dkAccent)
+                Text(line[line.index(after: dot)...].trimmingCharacters(in: .whitespaces))
+                    .dkFont(14).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "info.circle").dkFont(12).foregroundStyle(.tertiary).frame(width: 18)
+                Text(line).dkFont(13).foregroundStyle(.tertiary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
     }
 }
