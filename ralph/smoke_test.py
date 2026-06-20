@@ -271,6 +271,25 @@ def check_ratelimit():
     return (not problems), ("出站限速器就位" if not problems else "; ".join(problems))
 
 
+def check_fair_queue():
+    """不变量 12：per-guest 公平队列就位（Q1）。
+
+    hub 有队列结构（FIFO 串行闸 + 深度上限）+ 位次计算 + FIFO 取出；runner Slots 单飞语义未变。
+    """
+    app = (ROOT / HUB_FILE).read_text(encoding="utf-8")
+    problems = []
+    if "_chat_serial" not in app or "_CHAT_MAX_QUEUE" not in app:
+        problems.append("hub 缺公平队列结构")
+    if "position" not in app:
+        problems.append("缺位次计算")
+    if "_chat_serial.acquire" not in app:   # asyncio.Lock 按 FIFO 唤醒 = 按序取出
+        problems.append("队列非 FIFO 取出")
+    run = (ROOT / "core/runner.py").read_text(encoding="utf-8")
+    if "Semaphore(max(1, n))" not in run:   # 单飞闸语义未被动过（反向断言）
+        problems.append("runner Slots 单飞语义被改了")
+    return (not problems), ("公平队列就位" if not problems else "; ".join(problems))
+
+
 CHECKS = [
     ("compile     全量编译", check_compile),
     ("parity      渠道契约一致", check_channel_parity),
@@ -283,6 +302,7 @@ CHECKS = [
     ("trust-tier  渠道信任分级", check_trust_tier),
     ("health      渠道鉴权探针", check_health_probe),
     ("ratelimit   出站限速器", check_ratelimit),
+    ("fair-queue  公平队列", check_fair_queue),
 ]
 
 

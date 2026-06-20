@@ -45,6 +45,23 @@ log = logging.getLogger("hub")
 SLOTS = runner.Slots(CFG.max_concurrency)
 SESSIONS = threads.Registry()   # SQLite 落盘，hub 重启不失忆
 
+# Q1 per-guest 公平队列：占线不再直接拒，按 FIFO 排队等单飞槽，回位次。concurrency 仍由 SLOTS=1 保证。
+_CHAT_MAX_QUEUE = 5            # 队列深（决策默认）：等待者超过这个数才回真 busy
+_CHAT_QUEUE_TIMEOUT = 600.0   # 入队超时 10min（决策默认）：等太久取消、让用户重发
+_chat_serial = asyncio.Lock() # /chat 串行闸：asyncio.Lock 按 FIFO 唤醒等待者 = 天然公平队列
+_chat_waiting = 0             # 当前在等闸的请求数（事件循环单线程，裸 int 读写安全）
+
+
+def _wait_slot(timeout: float = 30.0) -> bool:
+    """轮询拿单飞槽（在线程池里跑，阻塞安全）。串行闸已保证只有 1 个 /chat 在抢，
+    唯一竞争者是 brain 探针（最多占 ~20s）。**不改 Slots 语义**，只是把它的非阻塞 acquire 轮询成等待。"""
+    deadline = time.monotonic() + timeout
+    while not SLOTS.acquire():
+        if time.monotonic() > deadline:
+            return False
+        time.sleep(0.2)
+    return True
+
 # ---- 轻量统计（给菜单栏 /stats 用，内存即可）----
 _STARTED_AT = time.time()
 _stats_lock = threading.Lock()
@@ -161,9 +178,28 @@ async def chat(body: ChatIn):
     if brain_down:
         _bump("err", user_key)
         return {"ok": False, "text": "🔌 现在连不上 Claude（多半代理或网络断了），稍后再发。"}
-    if not SLOTS.acquire():
+    # Q1 公平队列：占线不直接拒，入队按 FIFO 等串行闸。队列满才回真 busy。
+    global _chat_waiting
+    busy_now = _chat_serial.locked()
+    if busy_now and _chat_waiting >= _CHAT_MAX_QUEUE:
         _bump("busy")
-        return {"ok": False, "busy": True, "text": "⏳ 正在处理上一条，等它完成再发。"}
+        return {"ok": False, "busy": True, "text": "⏳ 排队的人有点多，稍后再发。"}
+    position = _chat_waiting + 1 if busy_now else 0   # 你排第 position（前面还有 position 个：在跑的+排队的）
+    _chat_waiting += 1
+    try:
+        await asyncio.wait_for(_chat_serial.acquire(), timeout=_CHAT_QUEUE_TIMEOUT)
+    except asyncio.TimeoutError:
+        _bump("busy")
+        return {"ok": False, "busy": True, "text": "⏳ 排队等太久了（超过 10 分钟），这条先取消，重发一下。"}
+    finally:
+        _chat_waiting -= 1   # 已离开等待区（拿到闸或超时）
+    if position > 0:
+        log.info("chat 排队第%d位轮到 user=%s（前面 %d 个已清）", position, body.user, position)
+    # 拿到串行闸=轮到我。再等单飞槽（与 brain 探针协调），brain 最多占 ~20s
+    if not await asyncio.get_running_loop().run_in_executor(None, _wait_slot):
+        _chat_serial.release()
+        _bump("err", user_key)
+        return {"ok": False, "text": "服务正忙，稍后再试。"}
     try:
         _bump("total", user_key)
         log.info("chat channel=%s chat=%s user=%s text=%r", body.channel, body.chat_id, body.user, body.text[:80])
@@ -201,6 +237,7 @@ async def chat(body: ChatIn):
         return {"ok": result["ok"], "text": text}
     finally:
         SLOTS.release()
+        _chat_serial.release()   # 放串行闸：asyncio.Lock 自动唤醒 FIFO 下一个等待者（Q1）
 
 
 @app.get("/health")

@@ -89,7 +89,8 @@
   - 验收：smoke 绿 + 加 `check_ratelimit`：断言 `core/ratelimit.py` 存在含 token-bucket + 被 notify pusher 和分块回复引用。
   - 决策默认：20 条/分钟/渠道。
 
-- [ ] **Q1 · per-guest 公平队列（"你排第 N"）**
+- [x] **Q1 · per-guest 公平队列（"你排第 N"）**
+  - 📌 落地说明：请求/响应模型下「回你排第N」+「答案稍后送达」二者只能取一（决策④不主动推送=无回推通道）。故落「持连接 FIFO 排队」：占线请求按序等串行闸、轮到再返回真答案（替代旧的直接拒）；位次已算+记日志（`chat 排队第N位轮到`），但不单独推给用户（持连接不能中途插话）。深 5/超时 10min/满则真 busy 均按决策默认。
   - 做什么：把现在「忙→回稍后再发」(runner.py Slots 非阻塞 acquire 拒绝) 升级成排队：占线时入队、回「你排第 N」、按序处理，concurrency 仍 1。
   - 怎么做：① hub `/chat`：SLOTS.acquire() 失败时不直接回 busy，改入 FIFO 队列（deque + 锁），回复带位次「你排第 N，前面还有 M 个」。② 单飞槽释放后按 FIFO 取下一个跑。③ 队列上限满了才回真 busy；入队项超时丢弃并告知。④ **不动 runner Slots 的 concurrency=1 语义**，只在 hub 层加排队。
   - 验收：smoke 绿 + 加 `check_fair_queue`：断言 hub 有队列结构 + 位次计算 + FIFO 取出；runner Slots 单飞语义未变。
