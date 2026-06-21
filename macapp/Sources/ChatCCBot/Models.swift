@@ -72,6 +72,27 @@ struct Insights: Codable {
 
 // MARK: - 渠道展示元数据（名称/定位走 i18n key，按 channel.<key>.name / .note 取）
 
+// 出站通知「监听」tab 用 ——
+struct NotifyRoute: Codable {
+    var cwd: String?
+    var channel: String
+    var target: String?
+    var registered_at: Double?
+    var last_notified: Double?
+    var notified_count: Int?
+}
+struct NotifyRoutesResp: Codable { var routes: [String: NotifyRoute] }
+
+struct RecentSession: Codable, Identifiable {
+    var session_id: String
+    var cwd: String
+    var last_activity: String
+    var registered: Bool
+    var id: String { session_id }
+}
+struct RecentSessionsResp: Codable { var sessions: [RecentSession] }
+
+
 struct ChannelMeta {
     let key: String      // telegram / feishu / wecom / wechat
     let symbol: String   // SF Symbol

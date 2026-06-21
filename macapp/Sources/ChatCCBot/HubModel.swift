@@ -9,6 +9,7 @@ final class HubModel: ObservableObject {
     @Published var stats: HubStats?
     @Published var insights: Insights?   // 持久化用量(过去 7 天，跨重启)，B4
     @Published var allowlist: AllowlistResp?
+    @Published var notifyRoutes: [String: NotifyRoute] = [:]   // 「监听」tab：被监听的 session
     @Published var reachable = false   // 后端在跑且 ok:true 才为真（诚实降级用）
     @Published var busy = false        // hub 当前在跑 claude（菜单栏图标用）
     @Published var pending: [String: Bool] = [:]   // 开关乐观态：发请求到刷新前先显示目标值
@@ -81,6 +82,27 @@ final class HubModel: ObservableObject {
         stats = try? await HubApi.stats()   // 用量；拉不到不影响渠道显示
         insights = try? await HubApi.insights()   // 持久化用量(过去 7 天)，B4
         allowlist = try? await HubApi.allowlist()
+        notifyRoutes = (try? await HubApi.notifyRoutes())?.routes ?? [:]   // 监听列表
+    }
+
+    /// 纳管一个 session 到出站通知（「监听」tab）。
+    func registerNotify(_ session: String, _ cwd: String, _ channel: String, _ target: String) async {
+        lastError = nil
+        do { try await HubApi.registerNotify(.init(session_id: session, cwd: cwd, channel: channel, target: target)) }
+        catch { lastError = "err.action_failed" }
+        await refresh()
+    }
+
+    /// 注销（停止监听）。
+    func unregisterNotify(_ session: String) async {
+        lastError = nil
+        do { try await HubApi.unregisterNotify(session) } catch { lastError = "err.action_failed" }
+        await refresh()
+    }
+
+    /// 列本机最近会话（「纳管」浏览用）。拉不到回空。
+    func recentSessions(_ limit: Int = 30) async -> [RecentSession] {
+        (try? await HubApi.recentSessions(limit: limit))?.sessions ?? []
     }
 
     /// 加/移除白名单：改 .env + 重启该渠道，等一会再刷新。

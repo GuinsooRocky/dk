@@ -1,7 +1,7 @@
 import SwiftUI
 
 // 主窗口：顶部等宽分段 tab + 内容区。
-// tab 顺序：渠道 → 用量 → 设置 → 向导（向导最后）。等宽避免中英切换时宽度跳动。
+// tab 顺序：渠道 → 监听 → 设置 → 说明（向导）。等宽避免中英切换时宽度跳动。
 struct MainView: View {
     @EnvironmentObject var i18n: I18n
     @EnvironmentObject var appState: AppState
@@ -13,6 +13,7 @@ struct MainView: View {
                 Spacer()
                 SegTabs(selection: $tab, titles: [
                     i18n.t("tab.channels"),
+                    i18n.t("tab.monitor"),
                     i18n.t("tab.settings"),
                     i18n.t("tab.setup"),
                 ])
@@ -25,7 +26,8 @@ struct MainView: View {
             Group {
                 switch tab {
                 case 0: ChannelsView()
-                case 1: SettingsView()
+                case 1: MonitorView()   // 监听：出站通知监听的会话（决策④推翻，UI 不能砍）
+                case 2: SettingsView()
                 default: WizardView()   // §4.1 多步向导取代静态 OnboardingView（W1 起）
                 }
             }

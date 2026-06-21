@@ -93,6 +93,22 @@ enum HubApi {
         try await post("/config/cred", CredConfig(channel: channel, field: field, value: value))
     }
 
+    // ---- 「监听」tab：出站通知会话的查看 + 纳管 + 注销 ----
+    static func notifyRoutes() async throws -> NotifyRoutesResp {
+        try await get("/notify/routes", as: NotifyRoutesResp.self)
+    }
+    static func recentSessions(limit: Int = 30) async throws -> RecentSessionsResp {
+        try await get("/notify/sessions?limit=\(limit)", as: RecentSessionsResp.self)
+    }
+    struct NotifyRegister: Encodable { let session_id: String; let cwd: String; let channel: String; let target: String }
+    static func registerNotify(_ b: NotifyRegister) async throws {
+        try await post("/notify/register", b)
+    }
+    struct NotifyUnregister: Encodable { let session_id: String }
+    static func unregisterNotify(_ id: String) async throws {
+        try await post("/notify/unregister", NotifyUnregister(session_id: id))
+    }
+
     static func allowlist() async throws -> AllowlistResp {
         try await get("/allowlist", as: AllowlistResp.self)
     }
