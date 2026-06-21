@@ -91,6 +91,7 @@ struct WizardView: View {
                 Text(label).dkFont(14)
             }.contentShape(Rectangle())
         }.buttonStyle(.plain)
+        .accessibilityAddTraits(wiz.channel == key ? [.isSelected] : [])   // VoiceOver 播报"已选中"
     }
 
     // Step3 连接：粘 token 写 config + 实时抓 ID（复用 /pending+/allowlist，替代手 grep 回填）
@@ -195,10 +196,15 @@ struct WizardView: View {
                             .foregroundStyle(selectedTier == tier ? Color.dkAccent : .secondary)
                         Text(i18n.t(tierKey(tier))).dkFont(14)
                         if locked {
-                            Text(i18n.t("wizard.needs_sandbox")).dkFont(11).foregroundStyle(.orange)
+                            // 橙字白底不达标 → 锁图标 + 自适应 secondary（语义靠"锁+disabled 行"承载，不靠颜色）
+                            HStack(spacing: 3) {
+                                Image(systemName: "lock.fill").dkFont(10)
+                                Text(i18n.t("wizard.needs_sandbox")).dkFont(11)
+                            }.foregroundStyle(.secondary)
                         }
                     }.contentShape(Rectangle())
                 }.buttonStyle(.plain).disabled(locked)
+                .accessibilityAddTraits(selectedTier == tier ? [.isSelected] : [])
             }
             navButtons()
         }
@@ -223,7 +229,14 @@ struct WizardView: View {
                 set: { v in autostart = v; if Autostart.available() { Autostart.set(v) } }
             )).disabled(!Autostart.available())
             if isLaptop {
-                Text(i18n.t("wizard.laptop_warn")).dkFont(13).foregroundStyle(.orange)
+                // 警示不靠橙字单独承载（橙字白底 2.2:1 不达标）：图标+主色字+淡橙底块，亮暗都读得清
+                HStack(spacing: 8) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                    Text(i18n.t("wizard.laptop_warn")).dkFont(13).foregroundStyle(.primary)
+                    Spacer()
+                }
+                .padding(.vertical, 8).padding(.horizontal, 10)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.12)))
                 Toggle(i18n.t("wizard.keep_awake"), isOn: Binding(
                     get: { keepAwake },
                     set: { v in keepAwake = v; Task.detached { _ = DisableSleep.set(v) } }  // 弹密码，丢后台

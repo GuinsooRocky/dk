@@ -23,7 +23,7 @@ enum ChannelState {
         case .off: return Color(red: 0.56, green: 0.56, blue: 0.58)       // #8E8E93
         case .needsSetup: return Color(red: 0.35, green: 0.78, blue: 0.98) // #5AC8FA 青蓝
         case .connecting: return Color(red: 1.00, green: 0.58, blue: 0.00) // #FF9500 橙：没确认连上
-        case .authFailed: return Color(red: 1.00, green: 0.80, blue: 0.00) // #FFCC00 黄：连得上但认证失效
+        case .authFailed: return Color(red: 0.63, green: 0.47, blue: 0.00) // #A07800 暗金：连得上但认证失效（亮/暗底都达标，原 #FFCC00 白底隐形）
         case .unknown: return Color(red: 0.56, green: 0.56, blue: 0.58)
         }
     }
