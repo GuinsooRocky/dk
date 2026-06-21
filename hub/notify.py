@@ -88,6 +88,79 @@ def get_route(session_id: str):
     return load_routes().get(session_id)
 
 
+def register_session(session_id: str, cwd: str, channel: str, target=None) -> dict:
+    """纳管一个 session 到出站通知（app「监听」tab / CLI 共用）。存 cwd 供 UI 显示。"""
+    routes = load_routes()
+    routes[session_id] = {
+        "cwd": cwd, "channel": channel, "target": target,
+        "registered_at": time.time(),
+    }
+    save_routes(routes)
+    return routes[session_id]
+
+
+def unregister_session(session_id: str) -> bool:
+    routes = load_routes()
+    if session_id in routes:
+        del routes[session_id]
+        save_routes(routes)
+        return True
+    return False
+
+
+def _session_meta(jsonl: Path):
+    """轻量读 jsonl 内容：cwd（最早一条带 cwd）+ 最后活动时间戳（最后一条带 timestamp）。
+    只看内容、不碰 file mtime（铁律）；早退避免逐行全解析。"""
+    try:
+        lines = jsonl.read_text(encoding="utf-8").splitlines()
+    except Exception:
+        return None, ""
+    cwd, last_ts = None, ""
+    for line in lines:
+        try:
+            o = json.loads(line)
+        except Exception:
+            continue
+        if o.get("cwd"):
+            cwd = o["cwd"]
+            break
+    for line in reversed(lines):
+        try:
+            o = json.loads(line)
+        except Exception:
+            continue
+        if o.get("timestamp"):
+            last_ts = o["timestamp"]
+            break
+    return cwd, last_ts
+
+
+def list_recent_sessions(limit: int = 30) -> list:
+    """列本机最近的 Claude 会话（给「监听」tab 的「纳管新 session」浏览）。
+
+    扫 ~/.claude/projects/*/*.jsonl，排除 bot 自己的 workdir（is_bot_workdir），
+    标注是否已纳管，按内容时间戳降序取前 limit 条。
+    """
+    base = Path.home() / ".claude" / "projects"
+    if not base.is_dir():
+        return []
+    routes = load_routes()
+    out = []
+    for pdir in base.iterdir():
+        if not pdir.is_dir():
+            continue
+        for jl in pdir.glob("*.jsonl"):
+            cwd, last_ts = _session_meta(jl)
+            if not last_ts or is_bot_workdir(cwd or ""):
+                continue
+            out.append({
+                "session_id": jl.stem, "cwd": cwd or "",
+                "last_activity": last_ts, "registered": jl.stem in routes,
+            })
+    out.sort(key=lambda x: x["last_activity"], reverse=True)
+    return out[:limit]
+
+
 ROUTE_TTL_SEC = 24 * 3600
 
 
@@ -220,12 +293,23 @@ def format_notification(n) -> str:
     return "\n".join(parts)
 
 
+def _stamp_notified(session_id: str) -> None:
+    """通知发出后给路由记一笔 last_notified + 次数（供「监听」tab 显示"已通知 N 次"）。"""
+    routes = load_routes()
+    row = routes.get(session_id)
+    if row is not None:
+        row["last_notified"] = time.time()
+        row["notified_count"] = row.get("notified_count", 0) + 1
+        save_routes(routes)
+
+
 def dispatch(n) -> dict:
     """按 session_id 查路由扇出。无路由则回落默认渠道（hook 应已先过滤未注册的）。"""
     route = get_route(n.session_id) or {}
     channel = route.get("channel") or default_channel()
     target = route.get("target")
     text = format_notification(n)
+    _stamp_notified(n.session_id)   # 记一笔（不论渠道成败，至少"试过通知一次"）
     if channel == "feishu":
         return {"channel": "feishu", **push_feishu(text)}
     if channel == "telegram":

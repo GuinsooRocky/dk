@@ -379,6 +379,46 @@ async def notify(body: NotifyIn, x_notify_token: str = Header(default="")):
     return {"ok": bool(result.get("ok")), "result": result}
 
 
+@app.get("/notify/routes")
+async def notify_routes():
+    """「监听」tab：当前被监听的 session 列表（session_id → cwd/渠道/目标/注册时间/已通知）。"""
+    return {"routes": notify_mod.load_routes()}
+
+
+@app.get("/notify/sessions")
+async def notify_sessions(limit: int = 30):
+    """「监听」tab 的「纳管新 session」：列本机最近 Claude 会话（排除 bot 自己的）。"""
+    rows = await asyncio.get_running_loop().run_in_executor(
+        None, notify_mod.list_recent_sessions, limit
+    )
+    return {"sessions": rows}
+
+
+class NotifyRegister(BaseModel):
+    session_id: str
+    cwd: str = ""
+    channel: str          # feishu / telegram
+    target: str = ""      # TG 真实 chat_id；飞书可空
+
+
+@app.post("/notify/register")
+async def notify_register(body: NotifyRegister):
+    """app 纳管一个 session（替代 CLI watch register）。"""
+    if body.channel not in ("feishu", "telegram"):
+        return {"ok": False, "reason": f"未知渠道 {body.channel}"}
+    row = notify_mod.register_session(body.session_id, body.cwd, body.channel, body.target or None)
+    return {"ok": True, "route": row}
+
+
+class NotifyUnregister(BaseModel):
+    session_id: str
+
+
+@app.post("/notify/unregister")
+async def notify_unregister(body: NotifyUnregister):
+    return {"ok": notify_mod.unregister_session(body.session_id)}
+
+
 class Heartbeat(BaseModel):
     channel: str
 

@@ -19,7 +19,6 @@ register 时把渠道实际投递目标（Telegram 的真实 chat_id）存进路
 import argparse
 import json
 import sys
-import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # 任意 cwd 下当脚本跑也能 import
@@ -87,9 +86,7 @@ def cmd_register(args) -> int:
         print("Telegram 需要 --target <真实 chat_id>（群是负数）。"
               "注册时存真实投递目标、绝不从白名单反推（§5 P1 防串台）。", file=sys.stderr)
         return 1
-    routes = notify.load_routes()
-    routes[sid] = {"channel": channel, "target": target, "registered_at": time.time()}
-    notify.save_routes(routes)
+    notify.register_session(sid, str(cwd), channel, target)   # 存 cwd，供「监听」tab 显示
     print(f"已纳管 session {sid} → {channel}" + (f"（target={target}）" if target else ""))
     return 0
 

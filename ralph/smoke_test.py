@@ -164,6 +164,11 @@ def check_notify_endpoint():
         "runner 回调默认关": "DK_RUNNER_NOTIFY" in (ROOT / "core/runner.py").read_text(encoding="utf-8"),
         # N-M5：/notify 对企微有明确分支（诚实报错改投）
         "企微明确分支": 'channel == "wecom"' in nfy,
+        # 监听 tab 后端：注册表查看 + 列最近会话 + 纳管/注销
+        "/notify/routes": '"/notify/routes"' in src,
+        "/notify/sessions": '"/notify/sessions"' in src,
+        "/notify/register": '"/notify/register"' in src,
+        "/notify/unregister": '"/notify/unregister"' in src,
     }
     missing = [k for k, ok in need.items() if not ok]
     return (not missing), ("出站通知端点+鉴权+收尾齐" if not missing else "缺 " + ", ".join(missing))
