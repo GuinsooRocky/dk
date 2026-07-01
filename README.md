@@ -13,13 +13,15 @@
 ## 架构（hub 中枢）
 
 ```
-   菜单栏App(rumps) ──┐ 轮询 /status /stats
-                     ▼
-  Hub (FastAPI, 127.0.0.1, 唯一大脑) ── /chat 跑claude · 全局单飞 · 会话
-     ▲        ▲         ▲          ▲ 你也能 curl
-  Telegram  飞书      企微      （各薄壳：收消息+语音转写 → POST /chat）
-   壳       壳        壳
-        supervisor.py 一条命令起全部 + 崩溃自愈
+Telegram / 飞书 / 企微 三个渠道壳（收消息+语音转写）
+              │
+              ▼  POST /chat
+Hub（FastAPI，只绑 127.0.0.1，唯一大脑）── 跑 claude · 全局单飞 · 按会话记忆
+              ▲
+              │  你也能直接 curl
+菜单栏 App(rumps) ── 轮询 /status /stats，显示存活/用量
+
+supervisor.py 一条命令拉起 hub + 全部启用渠道，崩溃自愈
 ```
 
 - **Hub** = 唯一跑 claude 的地方（全局单飞，内存可控）；渠道是**薄转发壳**；加渠道≈复制一个壳。
