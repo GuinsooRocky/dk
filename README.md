@@ -1,6 +1,10 @@
 # DK
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 把**飞书 / Telegram / 企业微信**的消息（含**语音**）桥接到本机 Claude Code，在你自己的 Mac 上跑任务并把结果回到对话里。**可自托管**：拿走填自己的 Claude + 自己的 bot token，跑自己的实例。
+
+**环境要求**：macOS + 本机已安装并登录 Claude Code（`claude` 命令可执行）+ Python 3。
 
 **两个底气：**
 - **默认安静**：群里不 @ 它、不用触发词就一句不说，不刷屏（私聊才有问必答）。
@@ -79,4 +83,8 @@ sandbox-settings.example.json + SANDBOX.md   真隔离模板
 
 ---
 
-> 个人自用工具。需要本机已安装并登录 Claude Code（`claude` 可执行）。
+## License
+
+[MIT](./LICENSE)
+
+> 个人自用工具起步，欢迎 fork/自托管；不主动维护 issue/PR。
