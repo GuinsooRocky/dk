@@ -13,6 +13,7 @@ runtime_dir()/notify_routes.json，行：{session_id: {channel, target, register
   等价于 trust_env=False 的意图（hub 可能被注入了代理给 claude 用，TG 要直连）。
 """
 import json
+import logging
 import os
 import subprocess
 import time
@@ -20,6 +21,8 @@ import urllib.request
 from pathlib import Path
 
 from core import config, ratelimit
+
+log = logging.getLogger("notify")
 
 ROUTES_PATH = config.runtime_dir() / "notify_routes.json"
 TOKEN_PATH = config.runtime_dir() / ".notify_token"
@@ -263,6 +266,68 @@ def push_telegram(text: str, chat_id: str) -> dict:
     data = json.dumps({"chat_id": chat_id, "text": text}).encode("utf-8")
     req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with _DIRECT_OPENER.open(req, timeout=10) as resp:
+            body = json.loads(resp.read().decode("utf-8"))
+        ok = bool(body.get("ok"))
+        return {"ok": ok, "reason": "" if ok else str(body)[:200]}
+    except Exception as e:
+        return {"ok": False, "reason": str(e)}
+
+
+# ---- 审批推送（带按钮）----
+
+def _fmt_approval(tool_name: str, tool_input: dict) -> str:
+    """审批卡文案：把 agent 到底想干什么摊开给人看。
+
+    要点：**必须展示具体参数**（哪条命令、改哪个文件），只说"要用 Bash"等于让人瞎点同意。
+    参数可能很长（比如一大段脚本），截断但要标明截断了。"""
+    detail = ""
+    if tool_name in ("Bash", "Monitor", "BashOutput", "KillShell"):
+        detail = str(tool_input.get("command") or "")
+    elif tool_name in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        detail = str(tool_input.get("file_path") or "")
+    if not detail:
+        detail = json.dumps(tool_input, ensure_ascii=False)
+    if len(detail) > 600:
+        detail = detail[:600] + f"\n…（还有 {len(detail) - 600} 字，已截断）"
+    return f"🔐 要用 {tool_name}\n\n{detail}\n\n批准才会执行。"
+
+
+def push_approval(channel: str, chat_id: str, approval_id: str,
+                  tool_name: str, tool_input: dict) -> dict:
+    """把一条审批推给指定渠道的指定 endpoint。目前只实现 Telegram（inline keyboard）。
+
+    chat_id 由 Hub 从冻结的请求者上下文取，这里不做任何"猜目标"的回退 —— 推不出去就报错，
+    上层会把这次工具调用直接拒掉（宁可干不了活，也不能推给错的人或无声放行）。"""
+    if channel in ("curl", "local"):
+        # 本机操作者通道（PRD §6.2 的本地 CLI 入口）：审批落日志 + 挂在 /approval/pending，
+        # 人用 POST /approval/answer 批。没有按钮 UI，但闸是真的（还是要有人显式回一句）。
+        log.warning("⚠ 待审批 id=%s tool=%s —— 批准：POST /approval/answer "
+                    "{\"approval_id\":\"%s\",\"decision\":\"allow\",\"by_user\":\"<你>\"}",
+                    approval_id, tool_name, approval_id)
+        return {"ok": True, "reason": "local"}
+    if channel != "telegram":
+        return {"ok": False, "reason": f"渠道 {channel} 还没接审批按钮（目前只有 telegram）"}
+    token = _telegram_token()
+    if not token:
+        return {"ok": False, "reason": "未配 [telegram].token"}
+    if not chat_id:
+        return {"ok": False, "reason": "缺真实 chat_id，拒发以防串台"}
+    ratelimit.acquire("telegram")
+    payload = {
+        "chat_id": chat_id,
+        "text": _fmt_approval(tool_name, tool_input),
+        "reply_markup": {"inline_keyboard": [[
+            # callback_data 上限 64 字节：approval_id 是 12 位 hex，够用
+            {"text": "✅ 允许一次", "callback_data": f"ap:allow:{approval_id}"},
+            {"text": "🚫 拒绝", "callback_data": f"ap:deny:{approval_id}"},
+        ]]},
+    }
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"}, method="POST")
     try:
         with _DIRECT_OPENER.open(req, timeout=10) as resp:
             body = json.loads(resp.read().decode("utf-8"))

@@ -48,7 +48,7 @@ bash 里 python3 读 `~/.zshrc`（前 4 个必须全 BLOCKED），外加一个�
 |------|------|
 | `enabled: true` | 开启沙箱 |
 | `failIfUnavailable: true` | 沙箱拉不起来就**报错退出**，绝不静默裸跑（防 fail-open） |
-| `autoAllowBashIfSandboxed: true` | 既然已被沙箱关住，Bash 可免提示运行——这才让"开 Bash"变得可接受 |
+| `autoAllowBashIfSandboxed: false` | **必须 false**：它的意思是"在沙箱里就免提示跑"，正好把审批链路旁路掉（实测 true 时 `--permission-prompt-tool` 压根不被调用）。见 [APPROVALS.md](./APPROVALS.md) |
 | `filesystem.allowWrite` | **写**只允许工作目录（`~/claude-*-workdir`）；其余全盘只读 |
 | `filesystem.denyRead` | 禁**子进程**读 `~/.ssh`、Keychains 等（不管 Read 工具，见上） |
 | `network.allowedDomains` + `allowManagedDomainsOnly` | **子进程**只能访问白名单域名（不管 WebFetch，它是 claude 自己的工具） |
@@ -65,15 +65,20 @@ CLAUDE_SETTINGS=/Users/你/Desktop/my-code/dk/sandbox-settings.json
 
 `core/runner.run_claude` 会带 `--settings <该文件>` 起 claude，只对 bot 生效。
 
-### ⚠ 挂沙箱会顺手把 Bash 开了（GUARD-3 联动）
+### ⚠ 老 GUARD-3 是无效的（2026-07-30 实测推翻）
 
-`core/runner._effective_tools` 的逻辑是：**沙箱没验过 → 从工具清单里剥掉 Bash/Write/Edit**。
-所以在 `CLAUDE_SETTINGS` 没配的年代，`tools` 里就算写了 `Bash,Write,Edit` 也一直在被剥，
-实际生效的一直是只读四件。
+`core/runner` 原来的 GUARD-3 是「沙箱没验过 → 从 `--allowedTools` 里剥掉 Bash/Write/Edit」。
+**这个机制不成立**：`--allowedTools` 是免提示放行清单，不是能力白名单。实测拿
+`--allowedTools "Read,Glob,Grep,WebFetch"` 跑 `echo` 照样成功、`permission_denials` 为空。
 
-一旦沙箱验过，GUARD-3 就不剥了 → **`tools` 那行会真的生效**。补安全配置这个动作本身
-会解开危险工具，这是个反直觉的坑。所以 `config.toml` 的 `tools` 现在显式收成只读四件；
-真要开 Bash/Write/Edit，先跑探针过，再一件件加回来。
+也就是说 dk 一直宣称的"只读四件"是假的 —— bot 从来都能跑任意 shell 命令。
+
+现在改成：
+- **`--disallowedTools`** 才真摘工具（`_disallowed_tools`），而且按**能力**列全（只 deny Bash
+  会被 Monitor 绕过，实测）
+- 给不给危险工具，判据是**有没有人在回路里**（`DK_APPROVALS`），不是沙箱验没验过。
+  沙箱管"跑起来能碰到什么"，管不了"该不该跑"
+- 详见 [APPROVALS.md](./APPROVALS.md)
 
 注意权威顺序：supervisor 按 `setdefault` 从 `config.toml` 注入，`hub/.env` 只补缺不覆盖 →
 **被 supervisor 托管时 `config.toml` 是权威**，改 `hub/.env` 的 `CLAUDE_TOOLS` 没用。

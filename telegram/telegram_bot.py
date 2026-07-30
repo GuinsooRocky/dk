@@ -18,7 +18,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import config, security, dedup, chunking, hub_client, replies, ratelimit  # noqa: E402
 
 from telegram import Update  # noqa: E402
-from telegram.ext import Application, MessageHandler, filters, ContextTypes  # noqa: E402
+from telegram.ext import (  # noqa: E402
+    Application, MessageHandler, CallbackQueryHandler, filters, ContextTypes,
+)
 
 # ---- 加载 .env ----
 config.load_env(config.channel_env_path("telegram"))
@@ -222,8 +224,51 @@ async def on_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         DEDUP.discard(dedup_key)   # 处理异常→撤销记账，允许重投重试
 
 
+async def on_approval_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """审批按钮回调：callback_data = "ap:<allow|deny>:<approval_id>"。
+
+    只做传输：把「谁点的 + 点了什么」原样交给 Hub，能不能算数由 Hub 判（它才知道这条审批
+    的请求者是谁）。这里**不能**自己判权限——渠道壳看不到冻结的请求者上下文。
+    白名单仍要先过一道：非白名单的人连点都不该点得动。"""
+    q = update.callback_query
+    if q is None or not (q.data or "").startswith("ap:"):
+        return
+    clicker = str(q.from_user.id) if q.from_user else "anon"
+    if not security.is_allowed(clicker, ALLOWED):
+        log.warning("拒绝非白名单点审批 from=%s", clicker)
+        await q.answer("你不在白名单里", show_alert=True)
+        return
+    try:
+        _, decision, approval_id = (q.data or "").split(":", 2)
+    except ValueError:
+        await q.answer("按钮数据坏了")
+        return
+    try:
+        r = await hub_client.answer_approval(approval_id, decision, clicker)
+    except Exception:
+        log.exception("回传审批失败 id=%s", approval_id)
+        await q.answer("回传失败，Hub 可能不在", show_alert=True)
+        return
+
+    if r.get("ok"):
+        verdict = "✅ 已允许" if decision == "allow" else "🚫 已拒绝"
+    elif r.get("already"):
+        verdict = f"（这条已经是 {r.get('decision')} 了，不能改）"
+    elif r.get("reason") == "not_requester":
+        verdict = "⛔ 这不是你发起的任务，不能代批"
+    else:
+        verdict = f"没生效：{r.get('reason') or '未知原因'}"
+    await q.answer(verdict.strip("（）"))
+    # 原地改掉消息并撤掉按钮：留着按钮会让人以为还能改判，也防重复点
+    try:
+        await q.edit_message_text(text=f"{q.message.text}\n\n—— {verdict}")
+    except Exception:
+        pass    # 编辑失败（消息太老/被删）不影响审批本身已生效
+
+
 def main() -> None:
     app = Application.builder().token(BOT_TOKEN).build()
+    app.add_handler(CallbackQueryHandler(on_approval_click, pattern=r"^ap:"))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, on_message))
     app.add_handler(MessageHandler(filters.COMMAND, on_message))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, on_voice))

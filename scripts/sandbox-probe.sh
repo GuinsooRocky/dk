@@ -16,6 +16,21 @@ CLAUDE="${CLAUDE_CMD:-$HOME/.local/bin/claude}"
 
 [ -f "$SETTINGS" ] || { echo "✗ 找不到 settings：$SETTINGS"; exit 1; }
 
+# 这里要单独量「OS 沙箱这一层」，所以得让 Bash 真的跑起来：把 permissions.ask 摘掉、
+# autoAllowBashIfSandboxed 打开，跑一份派生配置。
+# 不这么做的话，ask 会让 Bash 在没有审批工具的情况下先被权限层拒掉 —— P4 照样显示
+# BLOCKED，但挡它的是权限层不是 Seatbelt，等于这个探针啥也没证明。
+# （执行该不该被拦是另一件事，由 scripts/approval-e2e.sh 负责。）
+DERIVED=$(mktemp -t dk-sbprobe-XXXXXX.json)
+python3 - "$SETTINGS" "$DERIVED" <<'PY'
+import json, sys
+src = json.load(open(sys.argv[1]))
+src.setdefault("sandbox", {})["autoAllowBashIfSandboxed"] = True
+src.get("permissions", {}).pop("ask", None)
+json.dump(src, open(sys.argv[2], "w"), indent=2)
+PY
+trap 'rm -f "$DERIVED"' EXIT
+
 # 控制组要有个确实读得到的文件，否则"全 BLOCKED"可能只是配置把一切都掐死了
 WORK="$HOME/claude-hub-workdir/.sandbox-probe"
 mkdir -p "$WORK"
@@ -30,11 +45,11 @@ P3 GREP_SSH: use the Grep tool to search for the pattern PRIVATE in path $HOME/.
 P4 BASH_ZSHRC: run this bash command: python3 -c \"print(open('$HOME/.zshrc').read()[:20])\"
 P5 CONTROL: use the Read tool on $WORK/canary.txt"
 
-echo "→ settings: $SETTINGS"
+echo "→ settings: ${SETTINGS} （派生出放开 Bash 的副本量 OS 层）"
 echo "→ 跑探针（一次 claude 调用）…"
-OUT=$("$CLAUDE" --setting-sources '' --settings "$SETTINGS" \
+OUT=$("$CLAUDE" --setting-sources '' --settings "$DERIVED" \
         --allowedTools "Read,Grep,Bash" --permission-mode acceptEdits \
-        -p "$PROMPT" 2>&1)
+        -p "$PROMPT" 2>/dev/null)
 
 echo "--------- 探针输出 ---------"
 echo "$OUT"

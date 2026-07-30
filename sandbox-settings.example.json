@@ -8,7 +8,8 @@
   "sandbox": {
     "enabled": true,
     "failIfUnavailable": true,
-    "autoAllowBashIfSandboxed": true,
+    "_autoAllow_note": "必须 false —— 它的意思是「已经在沙箱里了，Bash 免提示跑」，正好把审批链路旁路掉（实测 true 时 permission-prompt-tool 压根不被调用）。要审批就不能免提示。",
+    "autoAllowBashIfSandboxed": false,
     "filesystem": {
       "allowWrite": [
         "~/claude-hub-workdir",
@@ -42,6 +43,12 @@
   },
 
   "permissions": {
+    "_ask_note": "ask 命中的工具会去问 --permission-prompt-tool（审批链路）。没开审批时它们直接被拒 = fail-closed。按能力列全，别只列 Bash：实测 deny 掉 Bash 后 claude 会改用 Monitor 跑同一条命令。",
+    "ask": [
+      "Bash", "BashOutput", "KillShell", "Monitor",
+      "Task", "Agent",
+      "Write", "Edit", "MultiEdit", "NotebookEdit"
+    ],
     "deny": [
       "Read(//Users/你/.ssh/**)",
       "Read(//Users/你/.aws/**)",

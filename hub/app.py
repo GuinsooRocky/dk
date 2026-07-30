@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from core import config, runner, threads, sandbox, stats_db  # noqa: E402
 from hub import notify as notify_mod  # noqa: E402
 from hub import health as health_mod  # noqa: E402
+from hub import approvals as approvals_mod  # noqa: E402
 
 config.load_env(config.app_root() / "hub" / ".env")
 CFG = config.load(str(Path.home() / "claude-hub-workdir"))
@@ -200,6 +201,7 @@ async def chat(body: ChatIn):
         _chat_serial.release()
         _bump("err", user_key)
         return {"ok": False, "text": "服务正忙，稍后再试。"}
+    run_id = ""   # 在 try 外声明：finally 里要用，别靠 locals() 猜它有没有赋上
     try:
         _bump("total", user_key)
         log.info("chat channel=%s chat=%s user=%s text=%r", body.channel, body.chat_id, body.user, body.text[:80])
@@ -218,9 +220,13 @@ async def chat(body: ChatIn):
             )
         else:
             prompt = config.build_prompt(body.channel, body.user, work_dir, body.text)
+        # 审批用的请求者上下文在**入口**冻结：审批推给谁、谁点的算数，全看这一条，
+        # 不从白名单反推、不拿最近活跃的人猜（PRD §14）。跑完在 finally 里撤掉。
+        if CFG.approvals:
+            run_id = approvals_mod.open_run(body.channel, body.chat_id, body.user)
         # run_claude 是阻塞 subprocess → 丢线程池，别卡住事件循环
         result = await asyncio.get_running_loop().run_in_executor(
-            None, runner.run_claude, CFG, prompt, work_dir, resume
+            None, runner.run_claude, CFG, prompt, work_dir, resume, run_id
         )
         SESSIONS.update(key, result, was_resume=bool(resume))
         if result["ok"]:
@@ -236,6 +242,9 @@ async def chat(body: ChatIn):
             text = "（上次对话的上下文似乎丢了，已为你开新会话继续）\n\n" + text
         return {"ok": result["ok"], "text": text}
     finally:
+        if run_id:
+            # 撤掉冻结上下文：跑完了就不该还能拿这个 run_id 开新审批
+            approvals_mod.close_run(run_id)
         SLOTS.release()
         _chat_serial.release()   # 放串行闸：asyncio.Lock 自动唤醒 FIFO 下一个等待者（Q1）
 
@@ -546,6 +555,82 @@ async def stats_clear():
 async def stats_insights(days: int = 7):
     """持久化用量洞察（past N days · 趋势 · by-user/channel）——SQLite，重启不丢。B4。"""
     return stats_db.insights(days)
+
+
+# ============ 审批链路（approvals/mcp_server.py ←→ 渠道按钮）============
+
+class ApprovalRequest(BaseModel):
+    run_id: str
+    tool_name: str = ""
+    input: dict = {}
+    suggestions: list = []
+    approval_id: str = ""    # 首次为空→Hub 建记录；之后带回来轮询同一条
+
+
+@app.post("/approval/request")
+async def approval_request(body: ApprovalRequest):
+    """MCP server 问：这个工具能不能用。第一次建记录并推按钮给请求者，之后轮询同一条。
+
+    每轮最多挂 25 秒就返回 pending，让 MCP server 再问 —— 不无限挂 HTTP 连接（跨代理/
+    超时不可靠），对用户来说效果一样（他慢慢点）。"""
+    if body.approval_id:
+        # 轮询既有记录
+        for _ in range(50):                    # 50 × 0.5s = 25s
+            snap = approvals_mod.poll(body.approval_id)
+            if snap.get("decision"):
+                return {"approval_id": body.approval_id, **snap}
+            await asyncio.sleep(0.5)
+        return {"approval_id": body.approval_id, "decision": ""}
+
+    made = approvals_mod.request(body.run_id, body.tool_name, body.input, body.suggestions)
+    if not made:
+        # run_id 查不到 → 不知道该问谁 → 拒。绝不"找个人问问"（那就是串台）
+        log.warning("审批请求带了未知 run_id=%s → 拒", body.run_id[:8])
+        return {"approval_id": "", "decision": "deny",
+                "message": "审批上下文已失效（找不到请求者），本次拒绝"}
+    approval_id, ctx = made["approval_id"], made["ctx"]
+    log.info("审批请求 id=%s tool=%s → 推给 %s:%s",
+             approval_id, body.tool_name, ctx["channel"], ctx["chat_id"])
+    # 推给冻结下来的那个 endpoint（只用 ctx 里的，绝不用白名单）
+    pushed = notify_mod.push_approval(ctx["channel"], ctx["chat_id"], approval_id,
+                                      body.tool_name, body.input)
+    if not pushed.get("ok"):
+        # 推不出去 = 没人可能批准 → 直接拒，不要让 claude 白等 30 分钟
+        log.warning("审批推送失败 id=%s reason=%s → 拒", approval_id, pushed.get("reason"))
+        approvals_mod.decide(approval_id, "deny", ctx.get("user", ""))
+        return {"approval_id": approval_id, "decision": "deny",
+                "message": f"审批请求没能送达（{pushed.get('reason')}），本次拒绝"}
+    for _ in range(50):
+        snap = approvals_mod.poll(approval_id)
+        if snap.get("decision"):
+            return {"approval_id": approval_id, **snap}
+        await asyncio.sleep(0.5)
+    return {"approval_id": approval_id, "decision": ""}
+
+
+class ApprovalAnswer(BaseModel):
+    approval_id: str
+    decision: str            # allow | deny
+    by_user: str             # 渠道里的真实 sender id（校验是不是请求者本人）
+
+
+@app.post("/approval/answer")
+async def approval_answer(body: ApprovalAnswer):
+    """渠道壳把用户的点击回给 Hub。校验点的人就是请求者（PRD §13：别人的确认不算数）。"""
+    r = approvals_mod.decide(body.approval_id, body.decision, body.by_user)
+    if not r.get("ok") and r.get("reason") == "not_requester":
+        log.warning("拒绝代批：id=%s 点击者=%s %s",
+                    body.approval_id, body.by_user, r.get("detail", ""))
+    else:
+        log.info("审批结果 id=%s decision=%s by=%s ok=%s",
+                 body.approval_id, body.decision, body.by_user, r.get("ok"))
+    return r
+
+
+@app.get("/approval/pending")
+async def approval_pending():
+    """排查用：待批清单。不含 input 正文（PRD §15 默认不记正文）。"""
+    return approvals_mod.snapshot()
 
 
 def main() -> None:

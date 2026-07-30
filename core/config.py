@@ -299,6 +299,7 @@ class Config:
     max_concurrency: int
     claude_settings: str   # 传给 claude --settings 的 sandbox 配置文件路径（见 SANDBOX.md）
     engine: str            # "cli"（默认）| "sdk"
+    approvals: bool        # 开审批链路：危险工具走 Telegram 按钮批准（见 approvals/）
 
 
 def load(default_workdir: str) -> Config:
@@ -315,6 +316,7 @@ def load(default_workdir: str) -> Config:
         max_concurrency=int(os.getenv("CLAUDE_MAX_CONCURRENCY", "1")),
         claude_settings=os.getenv("CLAUDE_SETTINGS", "").strip(),
         engine=os.getenv("CLAUDE_ENGINE", "cli").strip().lower(),
+        approvals=os.getenv("DK_APPROVALS", "").strip() in ("1", "true", "True"),
     )
 
 

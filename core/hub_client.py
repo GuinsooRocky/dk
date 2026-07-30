@@ -37,6 +37,16 @@ def ask_hub_sync(channel: str, chat_id: str, user: str, text: str, image_path: s
         return resp.json()
 
 
+async def answer_approval(approval_id: str, decision: str, by_user: str) -> dict:
+    """把用户点的审批按钮回给 Hub。**必须 await 拿结果**——不能 fire-and-forget：
+    Hub 可能因"点的人不是请求者"拒收，那要如实回给点的人，不能装作批准成功了。"""
+    async with httpx.AsyncClient(trust_env=False, timeout=15) as c:
+        resp = await c.post(f"{HUB_URL}/approval/answer", json={
+            "approval_id": approval_id, "decision": decision, "by_user": str(by_user)})
+        resp.raise_for_status()
+        return resp.json()
+
+
 def report_pending(channel: str, sender: str) -> None:
     """把被白名单拒掉的发送者上报 Hub /pending（实时抓 ID）。fire-and-forget，绝不阻塞/抛错。"""
     def _send():
