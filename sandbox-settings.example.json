@@ -1,28 +1,64 @@
 {
+  "_comment_1": "两层闸，缺一层就有洞（为什么见 SANDBOX.md）：",
+  "_comment_2": "sandbox.* = OS 层 Seatbelt，只包 Bash 起的子进程；claude 自己的进程不在里面",
+  "_comment_3": "permissions.deny = 进程内层，管 claude 自己的 Read/Grep —— 它们读不到 sandbox.denyRead",
+  "_comment_4": "permissions 路径写法：// 开头=绝对路径，不吃 ~ 展开；sandbox 段那边可以用 ~",
+  "_comment_5": "改完必须跑 bash scripts/sandbox-probe.sh —— 规则名写错会被静默忽略，看配置看不出来",
+
   "sandbox": {
     "enabled": true,
     "failIfUnavailable": true,
     "autoAllowBashIfSandboxed": true,
     "filesystem": {
-      "allowWrite": ["~/claude-feishu-workdir", "~/claude-wechat-workdir"],
+      "allowWrite": [
+        "~/claude-hub-workdir",
+        "~/claude-feishu-workdir",
+        "~/claude-telegram-workdir",
+        "/tmp",
+        "/private/tmp"
+      ],
       "denyRead": [
         "~/.ssh",
         "~/.aws",
         "~/.config/gh",
         "~/.gnupg",
         "~/.netrc",
+        "~/.zshrc",
+        "~/.claude.json",
         "~/Library/Keychains",
-        "~/Desktop/my-code/dk/feishu-claude/.env",
-        "~/Desktop/my-code/dk/wechat-claude-bot/.env"
+        "~/Library/Cookies"
       ]
     },
     "network": {
       "allowedDomains": [
         "api.anthropic.com",
+        "statsig.anthropic.com",
+        "console.anthropic.com",
         "open.feishu.cn",
         "*.feishu.cn"
       ],
       "allowManagedDomainsOnly": true
     }
+  },
+
+  "permissions": {
+    "deny": [
+      "Read(//Users/你/.ssh/**)",
+      "Read(//Users/你/.aws/**)",
+      "Read(//Users/你/.config/gh/**)",
+      "Read(//Users/你/.gnupg/**)",
+      "Read(//Users/你/.netrc)",
+      "Read(//Users/你/.zshrc)",
+      "Read(//Users/你/.zsh_history)",
+      "Read(//Users/你/.claude.json)",
+      "Read(//Users/你/Library/Keychains/**)",
+      "Read(//Users/你/Library/Cookies/**)",
+      "Read(//**/.env)",
+      "Read(//**/.env.*)",
+      "Grep(//Users/你/.ssh/**)",
+      "Grep(//Users/你/.aws/**)",
+      "Grep(//Users/你/.config/gh/**)",
+      "Grep(//**/.env)"
+    ]
   }
 }
