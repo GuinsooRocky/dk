@@ -16,7 +16,11 @@ CLAUDE="${CLAUDE_CMD:-/Users/lengmo/.local/bin/claude}"
 # —— srt 定位。全局没装时退回 npx 缓存；两处都没有就 fail-closed，绝不裸跑
 resolve_srt() {
   [ -n "${SRT_CMD:-}" ] && { echo "$SRT_CMD"; return; }
+  # 正式落点：跟 node 版本解绑（nvm 升级不会带走它）。装法见 scripts/install-srt.sh
+  local fixed="$HOME/.local/lib/srt/node_modules/.bin/srt"
+  [ -x "$fixed" ] && { echo "$fixed"; return; }
   command -v srt 2>/dev/null && return
+  # 兜底：npx 缓存。能跑，但 npm cache clean 就没，别拿它当常驻依赖
   local hit
   hit=$(ls -d "$HOME"/.npm/_npx/*/node_modules/.bin/srt 2>/dev/null | head -1)
   [ -n "$hit" ] && echo "$hit"
@@ -84,15 +88,18 @@ ask() {  # $1=编号 $2=期望(OK|BLOCKED) $3=工具 $4=prompt
   local id="$1" want="$2" tools="$3" prompt="$4" out rc
   for attempt in 1 2 3; do
     # ⚠ `--` 必须有：srt 自己也有 --settings，不隔开会把 claude 的那份抢走
+    # </dev/null：不给 stdin 的话 claude 会等 3 秒再 "no stdin data received"，白搭时间还刷屏
     out=$(cd "$ROOT/work" && CLAUDE_CONFIG_DIR="$ROOT/botcfg" \
           "$SRT" -s "$ROOT/srt.json" -- "$CLAUDE" \
           --setting-sources '' --settings "$ROOT/claude-settings.json" \
-          --allowedTools "$tools" -p "$prompt" 2>&1)
+          --allowedTools "$tools" -p "$prompt" </dev/null 2>&1)
     rc=$?
     grep -qiE '529|overloaded|Internal server error' <<<"$out" || break
     sleep 20
   done
-  local one; one=$(echo "$out" | tr '\n' ' ' | cut -c1-110)
+  # 展示命中的那一行，别把 warning 当结果显示
+  local one; one=$(grep -m1 -E "^(OK|BLOCKED)" <<<"$out" | cut -c1-110)
+  [ -z "$one" ] && one=$(echo "$out" | tr '\n' ' ' | cut -c1-110)
   if grep -q "^$want" <<<"$out"; then
     printf '  ✓ %-28s %s\n' "$id" "$one"
   else

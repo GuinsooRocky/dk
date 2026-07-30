@@ -84,28 +84,93 @@ CLAUDE_SETTINGS=/Users/你/Desktop/my-code/dk/sandbox-settings.json
 注意权威顺序：supervisor 按 `setdefault` 从 `config.toml` 注入，`hub/.env` 只补缺不覆盖 →
 **被 supervisor 托管时 `config.toml` 是权威**，改 `hub/.env` 的 `CLAUDE_TOOLS` 没用。
 
-## 残留风险（P0 方案已验通，代码还没接）
+## 第三层：外层包裹（allow-list 姿态，2026-07-30 接线，默认关）
 
-> **2026-07-30 更新**：下面前两条的解法已经全链路实测跑通，但 **`core/runner.py` 还没接**，
-> 所以现状仍是本文档上半部分描述的两层闸。方案与实测数据在
-> `~/Desktop/my-code/telegram-agent-bot-设计.md` §3（不在本仓 `docs/` 里，别找错地方）。
+上面两层合起来仍是 **deny-list** ——「列举已知敏感物再挡掉」，你家目录里还有多少值钱东西
+没列，靠人记。给第二个人开账号撑不住。
 
-- **姿态是 deny-list，不是 allow-list**。`permissions.deny` 只能列举已知敏感物；你整个家目录
-  还有多少值钱东西没列，靠人记。**给第二个人用之前必须先解掉**，deny-list 撑不住。
-  → **解法已验通**：外层 `srt` 把整个 claude 进程包住，claude 自己的 Read 也吃 OS 边界
-  （实测：包裹前读穿 `OK:TOPSECRET-BANANA-42`，包裹后 `BLOCKED:EPERM`）。
-  配合独立 `CLAUDE_CONFIG_DIR`，连 owner 的 `~/.claude/projects/` 会话记录都读不到。
-- **`WebFetch` 是外传通道**，进程内工具、不受 `sandbox.network.allowedDomains` 约束。
-  → **解法已验通**：外层包裹下 WebFetch 也进 OS 网络边界，非白名单域名拿到 `Socket is closed`。
+这一层从**进程外**用 `srt`（`@anthropic-ai/sandbox-runtime`）把整个 claude 包进 OS 沙箱，
+姿态反过来：**默认全挡，只放行列出来的**。claude 自己的 Read/Grep/WebFetch 也一起落进边界。
+
+| | 内置 `sandbox.*` | `permissions.deny` | 外层包裹 |
+|---|---|---|---|
+| 管 Bash 子进程 | ✅ | ✗ | ✅ |
+| 管 claude 自己的 Read/Grep | ✗ | ✅ | ✅ |
+| 管 claude 自己的 WebFetch | ✗ | ✗ | ✅ |
+| 姿态 | allow-list（写） | deny-list | **allow-list** |
+| 绕过成本 | 进程外，绕不过 | 它自己执行，写个脚本就绕开 | 进程外，绕不过 |
+
+### 怎么开
+
+```bash
+bash scripts/install-srt.sh                       # 1. 装 srt 到跟 node 版本解绑的位置
+bash scripts/init-bot-config-dir.sh               # 2. 给 bot 建独立 CLAUDE_CONFIG_DIR
+cp srt-settings.example.json srt-settings.json    # 3. 按注释改路径
+bash scripts/outer-sandbox-probe.sh               # 4. 六项探针全过才算数
+```
+
+然后 `hub/.env`（跟 `CLAUDE_SETTINGS` / `DK_APPROVALS` 同一条路，supervisor 不注入这几个）：
+
+```
+DK_OUTER_SANDBOX=1
+DK_SRT_SETTINGS=/Users/你/Desktop/my-code/dk/srt-settings.json
+DK_BOT_CONFIG_DIR=/Users/你/.local/share/dk-botcfg
+# 可选，不填走默认落点 ~/.local/lib/srt 和 ~/.local/bin/node
+# DK_SRT_CLI=... / DK_SRT_NODE=...
+```
+
+**只对 cli 引擎有效。** `CLAUDE_ENGINE=sdk` 跑在本进程内、包不进 srt，同时开会**拒跑**
+（跟审批一样 fail-closed，免得以为有边界其实没有）。
+
+### fail-closed 在哪几处
+
+开了 `DK_OUTER_SANDBOX=1` 但装不起来，一律**这条消息不执行**，绝不裸跑：
+
+- srt 的 `cli.js` / node 找不到
+- 没给 `DK_SRT_SETTINGS`、文件不存在、不是合法 JSON、`allowRead` 是空的
+- **`allowRead` 盖不到这次跑必须读的路径**（claude 二进制、bot 配置目录，开审批时还有
+  `approvals/mcp_server.py` 和跑它的 python）。这条是提前炸 —— 不然现象会是 claude 起来了
+  但报 `command not found` 或「审批链路起不来」，很难查
+
+### 四个实测出来的坑
+
+1. **`srt` 会抢 claude 的 `--settings`**。srt 自己有 `-s, --settings`，它的 commander 不认
+   命令边界，`srt -s a.json claude --settings b.json` 会把 `b.json` 当 srt 配置，报
+   `network: Required / filesystem: Required` 拒绝启动。**必须 `srt -s a.json -- claude …`**。
+2. **不能调 `node_modules/.bin/srt` 那个 shim**。它的 shebang 是 `#!/usr/bin/env node`，
+   而 launchd 给的 PATH 只有 `/usr/bin:/bin:/usr/sbin:/sbin`，实测直接
+   `env: node: No such file or directory`。所以代码里是「绝对 node + 绝对 cli.js」。
+3. **沙箱认字面路径，不认 resolve 后的真身**。实测：allowRead 只有
+   `~/.local/share/claude`（真身）却用 `~/.local/bin/claude`（软链）调 → `Operation not
+   permitted`；反过来只放行 `~/.local/bin` 就能跑。所以覆盖检查也按字面比。
+4. **别用 `npm i -g` 装 srt**。本机 node 是 nvm 管的，全局前缀是
+   `~/.nvm/versions/node/<版本>/`，升一次 node 就没了。`scripts/install-srt.sh` 装到
+   `~/.local/lib/srt`，跟版本解绑。（顺带：在空目录直接 `npm i` 会让 npm 往上找最近的
+   `package.json`，实测会装进 `~/node_modules` 并改 `~/package.json`。脚本里先写好
+   `package.json` 就是为了钉住它。）
+
+### 代价：凭证从 Keychain 挪到了明文文件
+
+bot 用独立配置目录就得把凭证搬过去（认证态拆成两半：账号关联在 `~/.claude.json` 的
+`oauthAccount`，凭证本体在 Keychain 的 `Claude Code-credentials`；只搬一半都是 `Not logged in`）。
+搬完 `refreshToken` 就躺在 `<bot配置目录>/.credentials.json` 里，而那个目录沙箱是放行的。
+
+两层缓解都实测过：
+
+- `permissions.deny` 加 `Read(//<bot配置目录>/**)` → bot 自己的 Read 工具读不到，
+  **且不影响认证**（claude 读凭证走内部路径，不经 Read 工具）
+- 网络白名单只有 anthropic 三个域名，外传通道封死
+
+想彻底不落明文得走 `claude setup-token`（长效 token 走 `CLAUDE_CODE_OAUTH_TOKEN`），
+那是交互式的、要 owner 本人过一遍浏览器，还没验。
+
+## 残留风险
+
 - `sandbox-exec`（Seatbelt 的 CLI 壳）被 Apple 标 deprecated，底层内核机制仍在用（Chrome、codex 都依赖），
   macOS 26 仍工作。长期留意版本变化。
-
-### 接线时会踩的两脚（已实测）
-
-1. **`srt` 抢 `--settings`**。srt 自己有 `-s, --settings`，commander 不认命令边界，
-   `srt -s a.json claude --settings b.json` 会把 `b.json` 当 srt 配置、报
-   `network: Required / filesystem: Required` 拒绝启动。**必须 `srt -s a.json -- claude …`**。
-   `runner._run_cli` 本来就在传 `--settings`，这脚跑不掉。
-2. **srt 只在 npx 缓存里**（`~/.npm/_npx/76bebc5af50919ba/`，0.0.66，全局没装）。
-   launchd 常驻服务不能指着一个 `npm cache clean` 就没的路径 —— 要么全局装、要么 vendor 进仓，
-   并且**找不到就 fail-closed 不启动**，绝不静默降级成裸跑（同 `failIfUnavailable` 的道理）。
+- **srt 是 beta，配置格式可能变**。`install-srt.sh` 钉死了版本（0.0.66）；升级前后都要重跑
+  `outer-sandbox-probe.sh`。
+- 开审批时 `allowRead` 只能放行整个仓（MCP server 在里面）→ bot 读得到 dk 自己的源码。
+  那是它自己的代码，可接受；但别把别的项目塞进同一个目录。
+- 外层包裹**默认关**。开之前 bot 仍是上面两层的 deny-list 姿态 —— 自己一个人用够，
+  给第二个人开账号前必须先把这层打开并跑过探针。

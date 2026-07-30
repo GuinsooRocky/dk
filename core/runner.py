@@ -7,6 +7,8 @@
 """
 import json
 import logging
+import os as _os
+import shutil as _shutil
 import threading
 import subprocess
 from pathlib import Path
@@ -137,15 +139,13 @@ def _permission_mode(cfg) -> str:
     return "acceptEdits" if sandbox.verified(cfg.claude_settings) else "default"
 
 
-def _mcp_config_for_run(run_id: str) -> str:
-    """给这一次跑写一份 mcp-config，把 run_id 钉在 MCP server 的环境变量里。
+def _mcp_paths() -> tuple:
+    """(跑 MCP server 的 python, mcp_server.py 路径)，都已校验存在。
 
-    为什么按 run 写而不是共用一份：审批要回给**发起这次请求的人**。run_id 只有 Hub 知道
-    对应哪个 chat，MCP server 拿不到也伪造不了别人的 endpoint → 串台在结构上不成立
-    （PRD §14 冻结通知路由）。返回临时文件路径，调用方负责删。"""
+    抽出来是因为两处要用：写 mcp-config、以及外层沙箱的 allowRead 覆盖检查
+    （沙箱没放行这两条 → 审批链路装不起来，现象很难查，所以要提前炸）。"""
     import os
     import sys
-    import tempfile
     # 冻结的 sidecar 里 sys.executable 是那个二进制、不是 python → 允许显式指定。
     py = os.getenv("DK_MCP_PYTHON", "").strip()
     if not py:
@@ -158,7 +158,18 @@ def _mcp_config_for_run(run_id: str) -> str:
         raise FileNotFoundError(f"审批 MCP server 不在：{server}（打包漏了 --add-data？）")
     if not Path(py).exists():
         raise FileNotFoundError(f"跑 MCP server 的 python 不在：{py}（设 DK_MCP_PYTHON）")
-    server = str(server)
+    return py, str(server)
+
+
+def _mcp_config_for_run(run_id: str) -> str:
+    """给这一次跑写一份 mcp-config，把 run_id 钉在 MCP server 的环境变量里。
+
+    为什么按 run 写而不是共用一份：审批要回给**发起这次请求的人**。run_id 只有 Hub 知道
+    对应哪个 chat，MCP server 拿不到也伪造不了别人的 endpoint → 串台在结构上不成立
+    （PRD §14 冻结通知路由）。返回临时文件路径，调用方负责删。"""
+    import os
+    import tempfile
+    py, server = _mcp_paths()
     cfg_obj = {"mcpServers": {"dkapproval": {
         "command": py,
         "args": [server],
@@ -207,10 +218,36 @@ def _run_cli(cfg, full_prompt: str, work_dir, resume_session: str, run_id: str =
         cmd += ["--mcp-config", mcp_cfg_path,
                 "--permission-prompt-tool", "mcp__dkapproval__permission_prompt"]
 
+    # —— 外层包裹：把整个 claude 进程按进 OS 沙箱（allow-list 姿态）
+    #    没开就是 []，行为跟以前完全一样。开了装不起来 → 这条不跑，绝不裸跑。
+    env = _os.environ.copy()
+    if cfg.bot_config_dir:
+        # bot 用自己的配置目录，读不到 owner 的 ~/.claude/projects（那是全部会话记录）。
+        # 换目录会掉登录态，得先把凭证播进去 —— 见 SANDBOX.md「bot 配置目录怎么建」
+        env["CLAUDE_CONFIG_DIR"] = str(Path(cfg.bot_config_dir).expanduser())
+    try:
+        needed = {"claude 二进制": _shutil.which(cfg.claude_cmd) or cfg.claude_cmd}
+        if cfg.bot_config_dir:
+            needed["bot 配置目录"] = cfg.bot_config_dir
+        if cfg.approvals and run_id:
+            py, server = _mcp_paths()
+            needed["审批 MCP server"] = server
+            needed["跑它的 python"] = py
+        cmd = sandbox.outer_wrap_prefix(cfg, work_dir, needed) + cmd
+    except (sandbox.OuterSandboxError, FileNotFoundError) as e:
+        log.error("外层沙箱起不来：%s", e)
+        if mcp_cfg_path:
+            try:
+                _os.unlink(mcp_cfg_path)
+            except OSError:
+                pass
+        return {"ok": False, "session_id": "",
+                "text": "沙箱没起来，为安全起见这条没执行。看 hub 日志。"}
+
     try:
         try:
             proc = subprocess.run(
-                cmd, cwd=str(work_dir),
+                cmd, cwd=str(work_dir), env=env,
                 capture_output=True, text=True, timeout=cfg.timeout,
             )
         except subprocess.TimeoutExpired:
@@ -254,6 +291,12 @@ def _run_sdk(cfg, full_prompt: str, work_dir, resume_session: str, run_id: str =
         log.error("审批已开但引擎是 sdk（审批只在 cli 路径实现）→ 拒跑，改 CLAUDE_ENGINE=cli")
         return {"ok": False, "session_id": "",
                 "text": "配置冲突：审批链路只支持 cli 引擎，当前是 sdk。这条没执行。"}
+    # 外层包裹是"从进程外用 srt 把 claude 包住"，而 sdk 引擎跑在**本进程内**，
+    # 包不了。开了却走 sdk = 以为有 allow-list 边界、其实没有 → 同样 fail-closed。
+    if getattr(cfg, "outer_sandbox", False):
+        log.error("外层沙箱已开但引擎是 sdk（它跑在本进程内，包不进 srt）→ 拒跑，改 CLAUDE_ENGINE=cli")
+        return {"ok": False, "session_id": "",
+                "text": "配置冲突：外层沙箱只支持 cli 引擎，当前是 sdk。这条没执行。"}
     try:
         from claude_agent_sdk import query, ClaudeAgentOptions, ResultMessage
     except ImportError:

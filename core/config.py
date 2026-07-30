@@ -300,6 +300,13 @@ class Config:
     claude_settings: str   # 传给 claude --settings 的 sandbox 配置文件路径（见 SANDBOX.md）
     engine: str            # "cli"（默认）| "sdk"
     approvals: bool        # 开审批链路：危险工具走 Telegram 按钮批准（见 approvals/）
+    # —— 外层包裹（allow-list 姿态）。内置 sandbox.* 只包 Bash 子进程，
+    #    这层从进程外把整个 claude 包住，它自己的 Read/WebFetch 才受管。见 SANDBOX.md
+    outer_sandbox: bool    # 总开关。开了但装不起来 → 这条不跑（fail-closed）
+    srt_settings: str      # 每个 bot 一份的 srt 配置（allowRead/allowWrite/网络白名单）
+    srt_cli: str           # srt 的 dist/cli.js 绝对路径；空 = 用默认落点
+    srt_node: str          # 跑 cli.js 的 node 绝对路径；空 = ~/.local/bin/node
+    bot_config_dir: str    # 给 claude 的 CLAUDE_CONFIG_DIR。设了 bot 就读不到 owner 的 ~/.claude
 
 
 def load(default_workdir: str) -> Config:
@@ -317,6 +324,11 @@ def load(default_workdir: str) -> Config:
         claude_settings=os.getenv("CLAUDE_SETTINGS", "").strip(),
         engine=os.getenv("CLAUDE_ENGINE", "cli").strip().lower(),
         approvals=os.getenv("DK_APPROVALS", "").strip() in ("1", "true", "True"),
+        outer_sandbox=os.getenv("DK_OUTER_SANDBOX", "").strip() in ("1", "true", "True"),
+        srt_settings=os.getenv("DK_SRT_SETTINGS", "").strip(),
+        srt_cli=os.getenv("DK_SRT_CLI", "").strip(),
+        srt_node=os.getenv("DK_SRT_NODE", "").strip(),
+        bot_config_dir=os.getenv("DK_BOT_CONFIG_DIR", "").strip(),
     )
 
 

@@ -1,0 +1,61 @@
+{
+  "_说明": [
+    "外层包裹用的 srt 配置。每个 bot 一份（两个人 = 两份，各自只放行各自的目录）。",
+    "照它 cp 成 srt-settings.json，把 /Users/你 和各路径换成本机真实值，然后：",
+    "  hub/.env → DK_OUTER_SANDBOX=1 / DK_SRT_SETTINGS=<本文件绝对路径>",
+    "改完必须跑 scripts/outer-sandbox-probe.sh —— 路径写错 srt 不会提醒你。",
+    "",
+    "读写语义是反的（srt README）：",
+    "  读：默认全放行 → 用 denyRead 圈掉大区域，再用 allowRead 开小口。allowRead 压过 denyRead",
+    "  写：默认全拒 → 只有 allowWrite 列出的能写。denyWrite 压过 allowWrite",
+    "  网络：默认全拒，只放行 allowedDomains",
+    "",
+    "⚠ 比的是字面路径，不是 resolve 后的真身（实测）：",
+    "  只放行 ~/.local/share/claude 却用 ~/.local/bin/claude 调 → Operation not permitted。",
+    "  你实际用哪条路径，就得放行哪条。"
+  ],
+
+  "filesystem": {
+    "denyRead": [
+      "/Users/你"
+    ],
+    "allowRead": [
+      ".",
+      "/Users/你/.local/share/dk-botcfg",
+      "/Users/你/.local/bin",
+      "/Users/你/.local/share/claude",
+      "/Users/你/Desktop/my-code/dk",
+      "/opt/homebrew/opt/python@3.12/bin"
+    ],
+    "_最后两条只有开审批时需要": "DK_APPROVALS=1 时 MCP server 在仓里、还要一个 python 跑它；不开审批可以删掉",
+    "allowWrite": [
+      ".",
+      "/tmp",
+      "/private/tmp",
+      "/Users/你/.local/share/dk-botcfg"
+    ],
+    "denyWrite": []
+  },
+
+  "network": {
+    "allowedDomains": [
+      "api.anthropic.com",
+      "statsig.anthropic.com",
+      "console.anthropic.com"
+    ],
+    "deniedDomains": []
+  },
+
+  "_没放行 ~/.claude 是故意的": [
+    "~/.claude/projects/ 装着 owner 所有项目的完整会话记录。",
+    "外层包裹生效后 claude 自己的 Read 工具也受 OS 边界管 —— 放行进去的它全读得到。",
+    "所以 bot 走自己的 CLAUDE_CONFIG_DIR（上面那个 dk-botcfg），建法见 scripts/init-bot-config-dir.sh。"
+  ],
+  "_没放行 Keychain 也是故意的": [
+    "凭证已经落在 bot 自己的配置目录里，不需要再让它碰 ~/Library/Keychains。"
+  ],
+  "_allowRead 里那条仓路径的代价": [
+    "开审批时 MCP server 在仓里，只能放行整个仓 → bot 读得到 dk 自己的源码。",
+    "那是它自己的代码，可接受；但别把别的项目也放进这个目录。"
+  ]
+}
