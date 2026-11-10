@@ -7,7 +7,7 @@ cd "$(dirname "$0")"
 
 APP="dist/DK.app"
 BIN_NAME="ChatCCBot"          # SwiftPM 产物名（不外露）
-BUNDLE_ID="com.lengmo.dk"
+BUNDLE_ID="com.guinsoo.dk"
 
 echo "[1/4] release 编译"
 swift build -c release

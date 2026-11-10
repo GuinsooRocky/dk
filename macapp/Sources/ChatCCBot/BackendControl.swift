@@ -4,7 +4,7 @@ import Foundation
 // 守护 plist 的 KeepAlive 只在崩溃时重启，所以 kill TERM 是干净停止、不会被自动拉起；
 // kickstart 把已注册但停着的服务再拉起。要求守护已 install（plist 存在）。
 enum BackendControl {
-    static let label = "com.lengmo.chatccbot"
+    static let label = "com.guinsoo.chatccbot"
     static var domainTarget: String { "gui/\(getuid())/\(label)" }
 
     static var installed: Bool {
