@@ -11,7 +11,7 @@
 # 退出码 0 = 六项全过。任一项不符预期 = 非零。
 set -u
 
-CLAUDE="${CLAUDE_CMD:-/Users/lengmo/.local/bin/claude}"
+CLAUDE="${CLAUDE_CMD:-~/.local/bin/claude}"
 
 # —— srt 定位。全局没装时退回 npx 缓存；两处都没有就 fail-closed，绝不裸跑
 resolve_srt() {

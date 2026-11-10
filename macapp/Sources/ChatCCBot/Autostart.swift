@@ -2,7 +2,7 @@ import Foundation
 
 // 开机自启开关：读/写守护 LaunchAgent plist 的 RunAtLoad（改完下次登录生效，不打断当前服务）。
 enum Autostart {
-    static let plistPath = NSHomeDirectory() + "/Library/LaunchAgents/com.lengmo.chatccbot.plist"
+    static let plistPath = NSHomeDirectory() + "/Library/LaunchAgents/com.guinsoo.chatccbot.plist"
 
     static func available() -> Bool {
         FileManager.default.fileExists(atPath: plistPath)
