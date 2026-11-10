@@ -20,7 +20,7 @@
 set -euo pipefail
 
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
-LABEL="com.lengmo.chatccbot.feishu"
+LABEL="com.guinsoo.chatccbot.feishu"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 DOMAIN="gui/$(id -u)"
 

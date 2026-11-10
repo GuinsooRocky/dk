@@ -152,7 +152,7 @@ bot 收到 IM 消息后，是用 `core/runner.py` 的 `_run_cli` 起 `claude -p`
 
 ### 🔴 P0 — bot 自己的 claude 触发自通知（已实证）
 
-**问题**：hub 每个 IM 轮次都用 `claude -p` 子进程跑（`core/runner.py` `_run_cli`），**这些 headless 跑也会往 `~/.claude/projects` 写 transcript**——已核实：`~/.claude/projects/-Users-lengmo-claude-hub-workdir-feishu-ou-a3853aff.../` 下已经躺着 8 个 session jsonl，一个 hub 跑一个。全局 SessionEnd hook 会在**每一个** bot 起的 claude 进程上触发。当前唯一的闸是"注册表查找"（没注册就不通知），它防住了刷屏；但如果你哪天**真把一个 hub-workdir 的 session 注册了**，或者菜单栏"watch this session"点到了一个 hub 跑上，就会触发——更危险的是若推送动作本身又会调 claude（今天不会，但 `feishu_send.py` 去掉 `--raw` 就会调 claude，见 feishu_send.py:87），就会**循环**。注册表这个闸是唯一的断环器，且没文档化。
+**问题**：hub 每个 IM 轮次都用 `claude -p` 子进程跑（`core/runner.py` `_run_cli`），**这些 headless 跑也会往 `~/.claude/projects` 写 transcript**——已核实：`~/.claude/projects/-Users-<you>-claude-hub-workdir-feishu-ou-a3853aff.../` 下已经躺着 8 个 session jsonl，一个 hub 跑一个。全局 SessionEnd hook 会在**每一个** bot 起的 claude 进程上触发。当前唯一的闸是"注册表查找"（没注册就不通知），它防住了刷屏；但如果你哪天**真把一个 hub-workdir 的 session 注册了**，或者菜单栏"watch this session"点到了一个 hub 跑上，就会触发——更危险的是若推送动作本身又会调 claude（今天不会，但 `feishu_send.py` 去掉 `--raw` 就会调 claude，见 feishu_send.py:87），就会**循环**。注册表这个闸是唯一的断环器，且没文档化。
 
 **缓解**：
 1. **在注册表查找之前就硬排除 bot 自己的 work_dir 树**：`notify_hook.py` 从 stdin 读 `cwd`，只要在 `~/claude-hub-workdir` / `~/claude-feishu-workdir`（`CFG.work_dir` 根）下就立刻 `exit 0`。

@@ -7,7 +7,7 @@
 
 **改后端只能整体重建 `bash macapp/build_app.sh`（swift release + build_sidecar.sh + 一次性 deep 签名），绝不 in-place 换 sidecar/swift 二进制 + 零敲碎打 `codesign --force` 重签。**
 
-架构：launchd job `com.lengmo.chatccbot`（plist 在 `~/Library/LaunchAgents/`，带 DK_ROOT + WorkingDirectory=repo 根）→ 启 `dk_sidecar supervisor` → supervisor `subprocess.Popen` 自我 re-exec 出 hub(8787) + 各渠道。
+架构：launchd job `com.guinsoo.chatccbot`（plist 在 `~/Library/LaunchAgents/`，带 DK_ROOT + WorkingDirectory=repo 根）→ 启 `dk_sidecar supervisor` → supervisor `subprocess.Popen` 自我 re-exec 出 hub(8787) + 各渠道。
 
 为什么不能 in-place：
 - in-place `cp` 新二进制进 `dist/DK.app` + 反复重签会破坏 .app bundle 封印

@@ -6,7 +6,7 @@
 # 用法：./daemon/chatccbot.sh {install|start|stop|restart|status|logs|uninstall}
 set -e
 
-LABEL="com.lengmo.chatccbot"
+LABEL="com.guinsoo.chatccbot"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 PY="$(command -v python3)"
